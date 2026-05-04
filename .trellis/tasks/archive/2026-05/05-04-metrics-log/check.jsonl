@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/index.md", "reason": "验证 metrics.md 加入 guides 后 check 能读到"}
+{"file": ".trellis/scripts/common/paths.py", "reason": "check 需验证路径函数被正确使用"}
+{"file": ".trellis/scripts/common/io.py", "reason": "check 需验证 JSON 读写正确性"}
+{"file": ".trellis/config.yaml", "reason": "验证 hooks 注册格式正确"}
