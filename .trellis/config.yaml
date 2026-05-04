@@ -22,15 +22,15 @@ max_journal_lines: 2000
 # Each hook receives TASK_JSON_PATH environment variable pointing to task.json.
 # Hook failures print a warning but do not block the main operation.
 #
-# hooks:
-#   after_create:
-#     - "echo 'Task created'"
-#   after_start:
-#     - "echo 'Task started'"
-#   after_finish:
-#     - "echo 'Task finished'"
-#   after_archive:
-#     - "echo 'Task archived'"
+hooks:
+  after_create:
+    - "python3 .trellis/scripts/hooks/metrics_log.py create"
+  after_start:
+    - "python3 .trellis/scripts/hooks/metrics_log.py start"
+  after_finish:
+    - "python3 .trellis/scripts/hooks/metrics_log.py finish"
+  after_archive:
+    - "python3 .trellis/scripts/hooks/metrics_log.py archive"
 
 #-------------------------------------------------------------------------------
 # Monorepo / Packages
