@@ -14,3 +14,4 @@ const { listMdAgents, getConfig } = createTemplateReader(import.meta.url);
 
 export const getAllAgents = (): AgentTemplate[] => listMdAgents();
 export const getHooksConfig = (): string => getConfig("hooks.json");
+export const getMcpConfig = (): string => getConfig("mcp.json");

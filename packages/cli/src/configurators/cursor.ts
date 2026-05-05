@@ -10,7 +10,11 @@ import {
   writeAgents,
   writeSharedHooks,
 } from "./shared.js";
-import { getAllAgents, getHooksConfig } from "../templates/cursor/index.js";
+import {
+  getAllAgents,
+  getHooksConfig,
+  getMcpConfig,
+} from "../templates/cursor/index.js";
 
 /**
  * Configure Cursor:
@@ -46,5 +50,11 @@ export async function configureCursor(cwd: string): Promise<void> {
   await writeFile(
     path.join(configRoot, "hooks.json"),
     resolvePlaceholders(getHooksConfig()),
+  );
+
+  // MCP server config — shared with team via template
+  await writeFile(
+    path.join(configRoot, "mcp.json"),
+    resolvePlaceholders(getMcpConfig()),
   );
 }

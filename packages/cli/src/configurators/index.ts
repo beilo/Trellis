@@ -79,6 +79,7 @@ import {
 import {
   getAllAgents as getCursorAgents,
   getHooksConfig as getCursorHooksConfig,
+  getMcpConfig as getCursorMcpConfig,
 } from "../templates/cursor/index.js";
 import {
   getAllAgents as getGeminiAgents,
@@ -193,6 +194,7 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
         ".cursor/hooks.json",
         resolvePlaceholders(getCursorHooksConfig()),
       );
+      files.set(".cursor/mcp.json", resolvePlaceholders(getCursorMcpConfig()));
       return files;
     },
   },
