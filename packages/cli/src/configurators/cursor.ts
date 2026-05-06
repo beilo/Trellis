@@ -14,6 +14,7 @@ import {
   getAllAgents,
   getHooksConfig,
   getMcpConfig,
+  getRules,
 } from "../templates/cursor/index.js";
 
 /**
@@ -44,6 +45,14 @@ export async function configureCursor(cwd: string): Promise<void> {
     resolveBundledSkills(ctx),
   );
   await writeAgents(path.join(configRoot, "agents"), getAllAgents());
+
+  // Rules (.cursor/rules/*.mdc)
+  const rulesDir = path.join(configRoot, "rules");
+  ensureDir(rulesDir);
+  for (const rule of getRules()) {
+    await writeFile(path.join(rulesDir, `${rule.name}.mdc`), rule.content);
+  }
+
   await writeSharedHooks(path.join(configRoot, "hooks"), "cursor");
 
   // Hooks config (separate file, not settings.json)

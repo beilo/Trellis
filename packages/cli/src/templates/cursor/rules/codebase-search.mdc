@@ -1,0 +1,7 @@
+---
+alwaysApply: true
+---
+
+# 子代理规则
+
+- 使用自定义的 codebase-search 替代内置 Explore 子代理

@@ -10,8 +10,17 @@
 import { createTemplateReader, type AgentTemplate } from "../template-utils.js";
 export type { AgentTemplate };
 
-const { listMdAgents, getConfig } = createTemplateReader(import.meta.url);
+const { listMdAgents, listFiles, getConfig } = createTemplateReader(
+  import.meta.url,
+);
 
 export const getAllAgents = (): AgentTemplate[] => listMdAgents();
 export const getHooksConfig = (): string => getConfig("hooks.json");
 export const getMcpConfig = (): string => getConfig("mcp.json");
+export const getRules = (): AgentTemplate[] =>
+  listFiles("rules")
+    .filter((f) => f.endsWith(".mdc"))
+    .map((f) => ({
+      name: f.replace(".mdc", ""),
+      content: getConfig(`rules/${f}`),
+    }));

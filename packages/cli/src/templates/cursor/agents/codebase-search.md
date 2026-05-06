@@ -1,12 +1,7 @@
 ---
 name: codebase-search
-description: >
-  Codebase search and analysis agent. Use for ANY task that involves
-  finding files, searching code patterns, tracing dependencies, locating
-  definitions/usages, grep across the project, or understanding code
-  structure. When you need to explore the codebase, use this agent
-  instead of the built-in Explore subagent.
-model: inherit
+model: gpt-5.3-codex-spark
+description: Codebase search and analysis agent. Use for ANY task that involves   finding files, searching code patterns, tracing dependencies, locating   definitions/usages, grep across the project, or understanding code   structure. When you need to explore the codebase, use this agent   instead of the built-in Explore subagent.
 readonly: true
 is_background: true
 ---
