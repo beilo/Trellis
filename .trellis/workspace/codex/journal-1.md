@@ -72,3 +72,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: 全局 spec 部署：trellis init/update 自动部署 ~/.trellis/spec/
+
+**Date**: 2026-05-06
+**Task**: 全局 spec 部署：trellis init/update 自动部署 ~/.trellis/spec/
+**Branch**: `custom/beilo-v0.5-rc`
+
+### Summary
+
+新增 global-spec 模板目录（20 个 markdown），实现 deployGlobalSpec（init 覆盖写入）和 syncGlobalSpec（update 保留用户修改），集成到 trellis init/update 命令
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e64fe2c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
