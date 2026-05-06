@@ -101,4 +101,14 @@ Found a new "didn't think of that" moment? Add it to the relevant guide.
 
 ---
 
+## 全局规则（机器级）
+
+跨项目通用的机器级规则存放在 `~/.trellis/spec/`，结构与项目 spec 相同（`guides/`、`backend/`、`frontend/` 等层）。
+
+- 开始编码前，**先读取 `~/.trellis/spec/` 下与当前任务相关的 index.md 和指南文件**。
+- 全局规则与项目级规则冲突时，**项目级优先**——项目 spec 描述的是真实代码事实，全局 spec 是通用基线。
+- 全局规则只包含跨项目通用的工程纪律（修改前搜索、最小改动、验证记录等），不包含项目特有的 API 契约、业务流程或框架版本。
+
+---
+
 **Core Principle**: 30 minutes of thinking saves 3 hours of debugging.

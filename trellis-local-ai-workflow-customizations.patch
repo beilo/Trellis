@@ -1,0 +1,3006 @@
+diff --git a/.cursor/rules/figma-precise-restore-mandatory.mdc b/.cursor/rules/figma-precise-restore-mandatory.mdc
+new file mode 100644
+index 000000000..b6b6f27d8
+--- /dev/null
++++ b/.cursor/rules/figma-precise-restore-mandatory.mdc
+@@ -0,0 +1,22 @@
++---
++description: 凡涉及 Figma 链接或按稿还原 UI，必须先读项目 skill 再动手
++alwaysApply: true
++---
++
++# Figma 精准还原 — 强制流程
++
++当对话中出现以下任一情况时，**在编写或修改任何页面/样式代码之前**必须先执行：
++
++- 用户粘贴或提到 `figma.com` 链接（含 `node-id`）
++- 用户要求「按 Figma / 设计稿 / UI 稿还原、1:1、精准实现」等
++
++## 必须步骤
++
++1. 使用 Read 工具读取：`.cursor/skills/figma-precise-restore.md`，并**按其中 Mandatory Workflow 逐步执行**。
++2. 从链接解析 `fileKey` 与 `nodeId`（`node-id` 中的 `-` 转为 `:`），再调用 Figma MCP 的 `get_design_context`（参数以 MCP 工具 schema 为准）。
++3. 实现时遵循项目现有技术栈（React + SCSS modules 等），**不得**擅自引入 Tailwind，除非用户明确要求。
++4. 交付前按 skill 要求执行校验（如 `pnpm lint`，样式改动时 `pnpm lint:style`）。
++
++## 禁止
++
++- 在未读取上述 skill 的情况下直接凭记忆实现 Figma 页面。
+diff --git a/.cursor/rules/ui-compare-fix-mandatory.mdc b/.cursor/rules/ui-compare-fix-mandatory.mdc
+new file mode 100644
+index 000000000..2b91c331a
+--- /dev/null
++++ b/.cursor/rules/ui-compare-fix-mandatory.mdc
+@@ -0,0 +1,23 @@
++---
++description: 用户同时发送 UI 截图并提出修正/对比诉求时，必须先按 ui-compare-fix skill 执行
++alwaysApply: true
++---
++
++# UI 对比修正 — 强制流程
++
++当且仅当**以下两点在同一轮对话中同时成立**时，在编写或修改页面/样式代码之前必须先执行本规则：
++
++1. **用户发送**与页面/界面相关的截图、设计图或其它 **UI 图片**
++2. **用户明确提出**需对照画面改动的诉求，例如：**修正**、页面对比、和设计稿不一致、按 UI 稿还原、像素级对齐、修复 等
++
++
++## 必须步骤
++
++1. 使用 Read 工具读取：`.cursor/skills/ui-compare-fix.md`，并严格按其中 Required Workflow 执行。
++2. 先确认 scope（目标路由/组件、设计来源、实际截图来源），再开始改代码。
++6. 交付前执行验证：`pnpm lint`；样式改动时额外执行 `pnpm lint:style`。
++
++## 禁止
++
++- 在已满足「截图 + 修正诉求」的前提下，未读取 `ui-compare-fix.md` 就直接改样式。
++- 未完成对比闭环（差异清单 → 修复 → 复验）就宣称已对齐。
+diff --git a/.cursor/skills/figma-precise-restore.md b/.cursor/skills/figma-precise-restore.md
+new file mode 100644
+index 000000000..ec9a83990
+--- /dev/null
++++ b/.cursor/skills/figma-precise-restore.md
+@@ -0,0 +1,99 @@
++---
++name: figma-precise-restore
++description: 首次接收Figma链接时执行全元素直出还原流程。用于用户要求按UI稿精准实现、减少二次微调、非核心组件不抽象复用、页面与设计稿强一致的场景。默认执行设计拉取、资产本地化、防变形处理、全量元素落地、首轮对比修正与复验。
++---
++
++# Figma Precise Restore
++
++## 中文使用方法
++
++可直接触发：
++
++- “按 UI 稿全量还原”
++- “首次就做精准实现，不要后面再大量微调”
++- “Figma 链接已给，直接全元素落地”
++- “页面和设计稿强一致实现”
++
++建议同时提供：
++
++- Figma 链接（含 node-id）
++- 目标路由或页面名
++- 是否允许响应式调整（默认桌面稿优先）
++
++## Scope
++
++- **Core components** (design system / shared reusable components): reuse existing project components when appropriate.
++- **Non-core page elements** (page-specific sections, cards, keyboards, hint panels, stat strips, etc.): implement all visible elements directly from design; do not over-abstract.
++
++## Mandatory Workflow
++
++1. Parse and fetch design source
++
++   - Extract `fileKey` and `node-id`.
++   - Call Figma `get_design_context(fileKey, nodeId)` to obtain reference code and screenshot context.
++
++2. Localize assets
++
++   - Collect all returned asset URLs from `https://www.figma.com/api/mcp/asset/...`.
++   - Download assets to local project directories (default: `src/assets/images/`).
++   - Use module-prefixed semantic filenames and kebab-case (e.g. `nav-home.svg`, `card-keyboard.svg`).
++   - Keep runtime UI code free of remote Figma asset URLs.
++
++3. Normalize SVGs (required, anti-distortion)
++
++   - Keep `viewBox` intact.
++   - Replace `preserveAspectRatio="none"` with `preserveAspectRatio="xMidYMid meet"`.
++   - If `preserveAspectRatio` is missing, add `preserveAspectRatio="xMidYMid meet"` on root `<svg>`.
++   - Use `object-fit: contain` for constrained icon/image boxes.
++   - Use per-icon size classes for non-uniform icon ratios.
++
++4. First-pass implementation strategy (critical)
++
++- For all elements, implement full visible structure directly from the design (layout, size, spacing, typography, shadow, border).
++- Do not default to approximate values followed by heavy later tuning.
++- Do not collapse visible hierarchy or remove explicit visual elements from the design.
++- Do not abstract page-specific blocks into generic components.
++
++5. Precision mapping order
++
++   - Layout metrics: container dimensions, section gaps, paddings.
++   - Typography: font size, weight, line height, color hierarchy.
++   - Control visuals: radius, border, shadow, gradient/background.
++   - Icon/image visuals: ratio, occupied area, alignment.
++   - States: selected/active/hover when visible in the design.
++
++6. First-round auto comparison and correction (required)
++
++   - Immediately compare implementation against design after first pass.
++   - Prioritize and fix P0/P1 differences in the same round.
++   - Run at least one correction-and-recheck loop before concluding.
++
++7. Verification
++   - Keep existing project stack and conventions.
++   - Run `pnpm lint`.
++   - Run `pnpm lint:style` when style files changed.
++
++## Delivery Output
++
++Each delivery must include:
++
++- aligned scope (pages/sections)
++- fixes applied in this round (ordered by impact)
++- remaining minor deltas (if any)
++- verification results (`lint` / `lint:style`)
++
++## Constraints
++
++- Do not introduce Tailwind unless explicitly requested.
++- Do not add generated-code marker comments.
++- Do not modify unrelated files.
++- Do not claim full alignment if structural visual deltas still exist.
++
++## Quick Checklist
++
++- [ ] Figma node parsed correctly
++- [ ] Assets localized to project directory
++- [ ] SVGs normalized for anti-distortion
++- [ ] Non-core elements implemented directly
++- [ ] At least one compare-fix-recheck loop completed
++- [ ] `lint` / `lint:style` passed
+diff --git a/.cursor/skills/ui-compare-fix.md b/.cursor/skills/ui-compare-fix.md
+new file mode 100644
+index 000000000..a41946e9c
+--- /dev/null
++++ b/.cursor/skills/ui-compare-fix.md
+@@ -0,0 +1,125 @@
++---
++name: ui-compare-fix
++description: 对比实际页面截图与Figma设计稿并执行修正闭环。用于用户提到修正、页面对比、按UI稿还原、像素级对齐、修复、和设计稿不一致时，产出差异清单并完成样式/结构修复与复验。
++---
++
++# UI Compare Fix
++
++## 中文使用方法
++
++可直接用这些指令触发本 skill：
++
++- “修正”
++- ”按 UI 稿还原“
++- “页面对比”
++- “和设计稿不一致”
++- “像素级对齐”
++- “修复”
++
++建议同时提供：
++
++- 当前页面截图
++- Figma 链接（可选）
++
++## Purpose
++
++Use this skill to run a full visual alignment loop:
++
++1. collect references
++2. compare and prioritize gaps
++3. implement fixes
++4. verify again
++
++Goal: make implemented UI match Figma intent with minimal, controlled edits.
++
++## Trigger Conditions
++
++Apply when user asks any of:
++
++- 修正
++- 页面对比
++- 按UI稿还原
++- 像素级对齐
++- 和设计稿不一致
++- 修复
++
++Typical inputs:
++
++- Figma URL (`figma.com/design/...`)
++- actual screenshot(s)
++- target route/component
++
++## Required Workflow
++
++1. Confirm scope
++
++   - Identify target page route/component.
++   - Identify design source (Figma fileKey + node-id).
++   - Identify actual screenshot source (user image or runtime capture).
++
++2. Pull design reference
++
++   - Call Figma `get_design_context(fileKey, nodeId)`.
++   - If assets are needed, localize them before implementation.
++   - Do not ship runtime UI with remote Figma asset URLs.
++
++3. Run structured visual comparison
++
++   - Layout: overall width, spacing, alignment, section positions.
++   - Typography: font size, weight, line-height, color hierarchy.
++   - Components: radius, border, shadow, control sizes.
++   - Icons/images: aspect ratio, container fit, visual weight.
++   - States: hover/active/selected styles if visible in稿.
++
++4. Output a prioritized gap list
++
++   - P0: obvious structural mismatch.
++   - P1: strong visual mismatch.
++   - P2: micro-tuning items.
++   - Keep each item actionable and tied to concrete selectors/files.
++
++5. Implement fixes incrementally
++
++   - Prefer small SCSS/TSX edits over large rewrites.
++   - Keep project stack/conventions unchanged.
++   - Reuse existing components and tokens when possible.
++   - Avoid introducing Tailwind unless explicitly requested.
++
++6. Anti-distortion rules (required)
++
++   - Preserve SVG `viewBox`.
++   - If `preserveAspectRatio="none"` exists, replace with `xMidYMid meet`.
++   - Prefer one fixed dimension + the other auto for icons.
++   - Use `object-fit: contain` in constrained icon boxes.
++   - Use per-icon size classes for non-uniform icon ratios.
++
++7. Validate after edits
++   - Run `pnpm lint`.
++   - Run `pnpm lint:style` when style files changed.
++   - Re-check key visual deltas; continue until main gaps close.
++
++## Output Format
++
++When reporting back, use:
++
++- Compared scope
++- Fixed items (ordered by impact)
++- Remaining minor deltas (if any)
++- Verification results (`lint`, `lint:style`)
++
++## Implementation Rules
++
++- Keep edits minimal and reversible.
++- Do not modify unrelated files.
++- Do not add generated-code marker comments.
++- Do not claim pixel-perfect if residual gaps remain.
++
++## Quick Checklist
++
++- [ ] Figma node parsed correctly
++- [ ] Actual screenshot compared against UI稿
++- [ ] Gap list produced with priority
++- [ ] Fixes landed in code
++- [ ] SVG ratio rules satisfied
++- [ ] Lint/stylelint passed
++- [ ] Final report includes remaining risks
+diff --git a/.trellis/spec/backend/database-guidelines.md b/.trellis/spec/backend/database-guidelines.md
+index a24a7337b..65c9e0985 100644
+--- a/.trellis/spec/backend/database-guidelines.md
++++ b/.trellis/spec/backend/database-guidelines.md
+@@ -1,34 +1,34 @@
+-# Database Guidelines
++# 数据库指南
+ 
+-> Database patterns and conventions for this project.
++> 本项目的数据库模式和约定。
+ 
+ ---
+ 
+-## Overview
++## 概述
+ 
+-No database implementation lives in this repository.
++本仓库中不存在数据库实现。
+ 
+-Not found in the codebase:
+-- ORM setup
+-- SQL files
+-- database schema definitions
+-- migration scripts
+-- repository/DAO layers
+-- transaction helpers
++代码库中未发现：
++- ORM 设置
++- SQL 文件
++- 数据库 schema 定义
++- 迁移脚本
++- repository/DAO 层
++- 事务辅助函数
+ 
+-This project only calls remote backend APIs from the frontend.
++本项目只从前端调用远程后端 API。
+ 
+ ---
+ 
+-## Query Patterns
++## 查询模式
+ 
+-The closest equivalent to "queries" in this repository is HTTP request wrapping:
++本仓库中最接近“查询”的等价物是 HTTP 请求封装：
+ 
+-- Shared `Http` instances are initialized in `src/api/index.ts`.
+-- Domain request wrappers live in `src/api/<domain>/service.ts` or `index.ts`.
+-- Older page modules may define request functions in `server.ts` or `models/server.ts`.
++- 共享 `Http` 实例在 `src/api/index.ts` 中初始化。
++- 领域请求封装位于 `src/api/<domain>/service.ts` 或 `index.ts`。
++- 较旧的页面模块可能在 `server.ts` 或 `models/server.ts` 中定义请求函数。
+ 
+-Examples:
++示例：
+ - `src/api/index.ts`
+ - `src/api/ai-chat-api/index.ts`
+ - `src/pages/content/content-manage/content-detail/server.ts`
+@@ -36,32 +36,32 @@ Examples:
+ 
+ ---
+ 
+-## Migrations
++## 迁移
+ 
+-No migration mechanism exists in this repository. Do not document or invent one here.
++本仓库中不存在迁移机制。不要在这里记录或虚构迁移机制。
+ 
+-If a future task adds true backend code, this file should be rewritten from that backend repository's reality.
++如果未来任务添加真正的后端代码，应基于该后端仓库的真实情况重写此文件。
+ 
+ ---
+ 
+-## Naming Conventions
++## 命名约定
+ 
+-For backend-facing request code in this repository:
++对于本仓库中面向后端的请求代码：
+ 
+-- Keep backend field names unchanged in request payloads and response types.
+-- Put typed request/response definitions in `type.ts` when the API module is typed.
+-- Use verb-based helper names that describe the request intent.
++- 在请求载荷和响应类型中保持后端字段名不变。
++- 当 API 模块已经类型化时，将类型化的请求/响应定义放在 `type.ts` 中。
++- 使用基于动词、能描述请求意图的辅助函数名称。
+ 
+-Examples:
+-- `ICourseSessionRequestParams` and `IApiResponse<T>` in `src/api/ai-chat-api/type.ts`
+-- `findContentList` in `src/pages/content/content-manage/content-index/models/server.ts`
+-- `contenDetail`, `upsert`, and `findTagList` in `src/pages/content/content-manage/content-detail/server.ts`
++示例：
++- `src/api/ai-chat-api/type.ts` 中的 `ICourseSessionRequestParams` 和 `IApiResponse<T>`
++- `src/pages/content/content-manage/content-index/models/server.ts` 中的 `findContentList`
++- `src/pages/content/content-manage/content-detail/server.ts` 中的 `contenDetail`、`upsert` 和 `findTagList`
+ 
+ ---
+ 
+-## Common Mistakes
++## 常见错误
+ 
+-- Assuming a database table or ORM model exists in this repository.
+-- Writing frontend docs that prescribe migrations, transactions, or SQL naming rules that cannot be verified here.
+-- Hiding backend response shape differences instead of documenting them clearly.
+-- Returning inconsistent payload shapes from different request wrappers when a typed module already defines a common response contract.
++- 假设本仓库中存在数据库表或 ORM 模型。
++- 编写无法在此处验证的前端文档，要求迁移、事务或 SQL 命名规则。
++- 隐藏后端响应结构差异，而不是清晰记录这些差异。
++- 当类型化模块已经定义了通用响应契约时，不同请求封装仍返回不一致的载荷结构。
+diff --git a/.trellis/spec/backend/directory-structure.md b/.trellis/spec/backend/directory-structure.md
+index c3d74ba46..a4356a3de 100644
+--- a/.trellis/spec/backend/directory-structure.md
++++ b/.trellis/spec/backend/directory-structure.md
+@@ -1,23 +1,23 @@
+-# Directory Structure
++# 目录结构
+ 
+-> How backend-facing code is organized in this project.
++> 本项目中面向后端的代码组织方式。
+ 
+ ---
+ 
+-## Overview
++## 概述
+ 
+-This repository does not contain a standalone backend service. There are no server controllers, domain services, database models, or migration directories.
++本仓库不包含独立的后端服务。这里没有服务端 controller、领域服务、数据库模型或迁移目录。
+ 
+-What exists instead is frontend-side backend consumption code:
+-- shared HTTP client setup in `src/api/index.ts`
+-- shared API wrappers in `src/api/<domain>/`
+-- page-local request helpers in `server.ts` or `models/server.ts`
++实际存在的是前端侧的后端消费代码：
++- `src/api/index.ts` 中的共享 HTTP 客户端设置
++- `src/api/<domain>/` 中的共享 API 封装
++- `server.ts` 或 `models/server.ts` 中的页面本地请求辅助函数
+ 
+-Document this directory as backend-facing integration code, not as a real backend runtime.
++应将该目录记录为面向后端的集成代码，而不是真正的后端运行时。
+ 
+ ---
+ 
+-## Directory Layout
++## 目录布局
+ 
+ ```text
+ src/
+@@ -35,15 +35,15 @@ src/
+ 
+ ---
+ 
+-## Module Organization
++## 模块组织
+ 
+-Use these existing patterns:
++使用这些现有模式：
+ 
+-- Put reusable request wrappers in `src/api/<domain>/`.
+-- Keep page-specific request helpers next to the page when the API is only used there.
+-- Keep response/request types in `type.ts` when the API module is typed.
++- 将可复用的请求封装放在 `src/api/<domain>/` 中。
++- 当 API 仅在某个页面使用时，将页面专属请求辅助函数保留在页面旁边。
++- 当 API 模块已经类型化时，将响应/请求类型保留在 `type.ts` 中。
+ 
+-Examples:
++示例：
+ - `src/api/ai-chat-api/index.ts`
+ - `src/pages/content/content-manage/content-detail/server.ts`
+ - `src/pages/content/content-manage/content-index/models/server.ts`
+@@ -51,24 +51,24 @@ Examples:
+ 
+ ---
+ 
+-## Naming Conventions
++## 命名约定
+ 
+-- Shared API entry files commonly use `index.ts` and `service.ts`.
+-- API contract files commonly use `type.ts`.
+-- Page-local request wrappers use `server.ts` or `models/server.ts`.
+-- Request helper names are usually verb-based: `fetch*`, `get*`, `find*`, `update*`, `delete*`, `upsert`.
++- 共享 API 入口文件通常使用 `index.ts` 和 `service.ts`。
++- API 契约文件通常使用 `type.ts`。
++- 页面本地请求封装使用 `server.ts` 或 `models/server.ts`。
++- 请求辅助函数名称通常基于动词：`fetch*`、`get*`、`find*`、`update*`、`delete*`、`upsert`。
+ 
+ ---
+ 
+-## Examples
++## 示例
+ 
+-Representative backend-facing modules:
++代表性的面向后端模块：
+ - `src/api/index.ts`
+ - `src/api/ai-chat-api/`
+ - `src/pages/content/content-manage/content-detail/server.ts`
+ - `src/pages/content/content-manage/content-index/models/server.ts`
+ 
+-Anti-patterns to avoid:
+-- Writing spec text that assumes a Node service, ORM, or controller layer exists in this repository.
+-- Creating a fake backend folder convention that is not present in the codebase.
+-- Spreading the same reusable request across multiple page-local `server.ts` files.
++应避免的反模式：
++- 编写假设本仓库存在 Node 服务、ORM 或 controller 层的规范文本。
++- 创建代码库中不存在的虚假后端目录约定。
++- 将同一个可复用请求分散到多个页面本地 `server.ts` 文件中。
+diff --git a/.trellis/spec/backend/error-handling.md b/.trellis/spec/backend/error-handling.md
+index fb9658327..aa8810277 100644
+--- a/.trellis/spec/backend/error-handling.md
++++ b/.trellis/spec/backend/error-handling.md
+@@ -1,82 +1,82 @@
+-# Error Handling
++# 错误处理
+ 
+-> How errors are handled in this project.
++> 本项目中的错误处理方式。
+ 
+ ---
+ 
+-## Overview
++## 概述
+ 
+-Error handling is split between a shared HTTP interceptor and page-level request handling.
++错误处理分为共享 HTTP 拦截器和页面级请求处理两部分。
+ 
+-Current baseline behavior:
+-- global response interception in `src/api/index.ts`
+-- backend error-code to message conversion in helper files
+-- page or hook code checks `success`/`code` and shows UI feedback with Ant Design `message` or `Modal`
++当前基线行为：
++- 在 `src/api/index.ts` 中进行全局响应拦截
++- 在辅助文件中将后端错误码转换为提示信息
++- 页面或钩子代码检查 `success`/`code`，并通过 Ant Design 的 `message` 或 `Modal` 展示 UI 反馈
+ 
+ ---
+ 
+-## Error Types
++## 错误类型
+ 
+-No project-wide custom error class hierarchy was found.
++未发现项目范围内的自定义错误类层级。
+ 
+-Observed patterns:
+-- plain `Error` objects thrown from hooks and request helpers
+-- backend error code conversion through lookup helpers
+-- direct UI feedback via `message.error`, `message.warn`, `message.info`, and `Modal.error`
++已观察到的模式：
++- 从钩子和请求辅助函数中抛出普通 `Error` 对象
++- 通过查找辅助函数转换后端错误码
++- 通过 `message.error`、`message.warn`、`message.info` 和 `Modal.error` 直接展示 UI 反馈
+ 
+-Examples:
++示例：
+ - `src/api/index.ts`
+ - `src/utils/error-parse.ts`
+ - `src/api/error-code-parse.ts`
+ 
+ ---
+ 
+-## Error Handling Patterns
++## 错误处理模式
+ 
+-### Shared interceptor
++### 共享拦截器
+ 
+-`src/api/index.ts` sets the global response interceptor:
+-- `401` shows `Modal.error` and redirects to login
+-- `403` shows `message.error` and rewrites the response to a safe empty payload
+-- some network/timeout cases are rethrown for business code to handle
++`src/api/index.ts` 设置了全局响应拦截器：
++- `401` 展示 `Modal.error` 并重定向到登录页
++- `403` 展示 `message.error`，并将响应改写为安全的空载荷
++- 部分网络/超时场景会重新抛出，交由业务代码处理
+ 
+-### Page/hook handling
++### 页面/钩子处理
+ 
+-Business code usually:
+-- calls the request wrapper
+-- checks `response.success` or `response.code`
+-- throws a plain `Error` or shows a user message
+-- logs the failure with `console.error`
++业务代码通常会：
++- 调用请求封装
++- 检查 `response.success` 或 `response.code`
++- 抛出普通 `Error` 或展示用户提示
++- 使用 `console.error` 记录失败
+ 
+-Examples:
++示例：
+ - `src/pages/ai/ai-chat/hooks/useChat.ts`
+ - `src/pages/ai/ai-image/hooks/useUserDrawings.ts`
+ - `src/pages/user-board/hooks/useOnlineStatistics.ts`
+ 
+ ---
+ 
+-## API Error Responses
++## API 错误响应
+ 
+-The backend response shape is not fully uniform across all modules.
++后端响应结构在所有模块中并不完全统一。
+ 
+-Common typed shape in newer API code:
++较新的 API 代码中常见的类型化结构：
+ - `{ code, msg, success, data, traceId, extData }`
+ 
+-Examples:
++示例：
+ - `src/api/ai-chat-api/type.ts`
+ - `src/pages/ai/ai-chat/hooks/useChat.ts`
+ 
+-Older modules sometimes work directly with `res.data` or loosely typed responses:
++较旧模块有时会直接使用 `res.data` 或宽松类型的响应：
+ - `src/pages/content/content-manage/content-detail/server.ts`
+ - `src/api/employee-search-api/service.ts`
+ 
+-New shared wrappers should document and preserve the real backend response contract instead of guessing a new one.
++新的共享封装应记录并保留真实的后端响应契约，而不是臆造新的契约。
+ 
+ ---
+ 
+-## Common Mistakes
++## 常见错误
+ 
+-- Forgetting to check `success` or `code` before using response data.
+-- Swallowing errors that the interceptor intentionally rethrows for business handling.
+-- Adding a second error-message mapping in a feature when an existing helper already covers the domain.
+-- Assuming all API modules return the same response shape.
++- 使用响应数据前忘记检查 `success` 或 `code`。
++- 吞掉拦截器有意重新抛出、供业务处理的错误。
++- 在已有辅助函数覆盖该领域时，又在功能内新增第二套错误信息映射。
++- 假设所有 API 模块都返回相同的响应结构。
+diff --git a/.trellis/spec/backend/index.md b/.trellis/spec/backend/index.md
+index 7c4a7c596..e72e8b0e9 100644
+--- a/.trellis/spec/backend/index.md
++++ b/.trellis/spec/backend/index.md
+@@ -1,38 +1,38 @@
+-# Backend Development Guidelines
++# 后端开发指南
+ 
+-> Best practices for backend development in this project.
++> 本项目后端开发的最佳实践。
+ 
+ ---
+ 
+-## Overview
++## 概述
+ 
+-This directory contains guidelines for backend development. Fill in each file with your project's specific conventions.
++本目录包含后端开发指南。请使用你项目的具体约定填充每个文件。
+ 
+ ---
+ 
+-## Guidelines Index
++## 指南索引
+ 
+-| Guide | Description | Status |
++| 指南 | 说明 | 状态 |
+ |-------|-------------|--------|
+-| [Directory Structure](./directory-structure.md) | Module organization and file layout | Filled |
+-| [Database Guidelines](./database-guidelines.md) | ORM patterns, queries, migrations | Filled |
+-| [Error Handling](./error-handling.md) | Error types, handling strategies | Filled |
+-| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | Filled |
+-| [Logging Guidelines](./logging-guidelines.md) | Structured logging, log levels | Filled |
++| [目录结构](./directory-structure.md) | 模块组织和文件布局 | 已填写 |
++| [数据库指南](./database-guidelines.md) | ORM 模式、查询、迁移 | 已填写 |
++| [错误处理](./error-handling.md) | 错误类型、处理策略 | 已填写 |
++| [质量指南](./quality-guidelines.md) | 代码标准、禁止模式 | 已填写 |
++| [日志指南](./logging-guidelines.md) | 结构化日志、日志级别 | 已填写 |
+ 
+ ---
+ 
+-## How to Fill These Guidelines
++## 如何填写这些指南
+ 
+-For each guideline file:
++对于每个指南文件：
+ 
+-1. Document your project's **actual conventions** (not ideals)
+-2. Include **code examples** from your codebase
+-3. List **forbidden patterns** and why
+-4. Add **common mistakes** your team has made
++1. 记录项目的**实际约定**（不是理想状态）
++2. 包含来自代码库的**代码示例**
++3. 列出**禁止模式**及其原因
++4. 添加团队曾经犯过的**常见错误**
+ 
+-The goal is to help AI assistants and new team members understand how YOUR project works.
++目标是帮助 AI 助手和新团队成员理解你的项目如何运作。
+ 
+ ---
+ 
+-**Language**: All documentation should be written in **English**.
++**语言**：所有文档都应使用**简体中文**编写。
+diff --git a/.trellis/spec/backend/logging-guidelines.md b/.trellis/spec/backend/logging-guidelines.md
+index a932bcca9..931089034 100644
+--- a/.trellis/spec/backend/logging-guidelines.md
++++ b/.trellis/spec/backend/logging-guidelines.md
+@@ -1,71 +1,71 @@
+-# Logging Guidelines
++# 日志指南
+ 
+-> How logging is done in this project.
++> 本项目中的日志记录方式。
+ 
+ ---
+ 
+-## Overview
++## 概述
+ 
+-This repository uses frontend-side monitoring and logging for backend interactions. The main patterns are:
+-- Sentry initialization in production
+-- analytics/event tracking through CRM Shence
+-- console logging for local debugging and business errors
+-- a reusable prefixed logger utility in one real-time module
++本仓库使用前端侧监控和日志来处理与后端的交互。主要模式包括：
++- 在生产环境中初始化 Sentry
++- 通过 CRM 神策进行分析/事件跟踪
++- 使用控制台日志进行本地调试和业务错误记录
++- 在一个实时模块中使用可复用的带前缀日志工具
+ 
+ ---
+ 
+-## Log Levels
++## 日志级别
+ 
+-Observed usage is mostly based on the browser console and analytics helpers rather than a central logging framework.
++已观察到的用法主要基于浏览器控制台和分析辅助函数，而不是集中式日志框架。
+ 
+-- `console.log` for normal debug information
+-- `console.warn` for warnings through the custom logger
+-- `console.error` for failures
+-- user-facing messages through Ant Design `message.*` are often paired with logging
++- `console.log` 用于普通调试信息
++- `console.warn` 通过自定义日志工具用于警告
++- `console.error` 用于失败场景
++- 通过 Ant Design `message.*` 展示的用户提示通常会配合日志记录
+ 
+-Examples:
++示例：
+ - `src/utils/logHelper.ts`
+ - `src/pages/ai/ai-chat/hooks/useChat.ts`
+ - `src/pages/user-board/hooks/useOnlineStatistics.ts`
+ 
+ ---
+ 
+-## Structured Logging
++## 结构化日志
+ 
+-The only clear structured logging helper found is:
++目前发现的唯一清晰的结构化日志辅助函数是：
+ - `src/utils/logHelper.ts`
+ 
+-`createLogger(...)` prefixes messages as `[Logger][filename][type][channel=...]`, which is the best local pattern when a feature needs repeated debug logs.
++`createLogger(...)` 会将消息加上 `[Logger][filename][type][channel=...]` 前缀；当功能需要重复调试日志时，这是当前最佳的本地模式。
+ 
+-For product-level monitoring:
+-- Sentry is initialized in `src/index.tsx`
+-- Shence analytics is initialized in `src/utils/shence.ts`
++对于产品级监控：
++- Sentry 在 `src/index.tsx` 中初始化
++- 神策分析在 `src/utils/shence.ts` 中初始化
+ 
+ ---
+ 
+-## What to Log
++## 应记录什么
+ 
+-Good candidates based on existing code:
+-- request failures that need debugging
+-- real-time connection state changes
+-- media/device state changes in voice/video modules
+-- analytics events that matter to product behavior
++根据现有代码，适合记录的候选内容包括：
++- 需要调试的请求失败
++- 实时连接状态变化
++- 音视频模块中的媒体/设备状态变化
++- 对产品行为有意义的分析事件
+ 
+-Examples:
++示例：
+ - `src/pages/course-im/components/video-call/stores/video-call-store.ts`
+ - `src/utils/logHelper.ts`
+ - `src/index.tsx`
+ 
+ ---
+ 
+-## What NOT to Log
++## 不应记录什么
+ 
+-- Do not log secrets or raw auth tokens.
+-- Do not log full sensitive user payloads unless the surrounding module already requires it and masks private fields.
+-- Follow existing token masking behavior when logging RTC or request configuration.
++- 不要记录密钥或原始认证 token。
++- 除非所在模块已经要求记录并会遮蔽私密字段，否则不要记录完整的敏感用户载荷。
++- 记录 RTC 或请求配置时，遵循现有的 token 脱敏行为。
+ 
+-Example:
+-- `src/pages/course-im/components/video-call/stores/video-call-store.ts` masks the RTC token as `[已脱敏]` before logging.
++示例：
++- `src/pages/course-im/components/video-call/stores/video-call-store.ts` 会在记录前将 RTC token 脱敏为 `[已脱敏]`。
+ 
+-Notes:
+-- `@frontend/web-monitor` exists in dependencies, but clear runtime usage was not confirmed in the repository. Do not claim it as an active standard without verifying the code first.
++说明：
++- `@frontend/web-monitor` 存在于依赖中，但未能在仓库中确认清晰的运行时用法。在先验证代码前，不要将其宣称为现行标准。
+diff --git a/.trellis/spec/backend/quality-guidelines.md b/.trellis/spec/backend/quality-guidelines.md
+index 1850f9e21..edf3928f6 100644
+--- a/.trellis/spec/backend/quality-guidelines.md
++++ b/.trellis/spec/backend/quality-guidelines.md
+@@ -1,62 +1,62 @@
+-# Quality Guidelines
++# 质量指南
+ 
+-> Code quality standards for backend development.
++> 后端开发的代码质量标准。
+ 
+ ---
+ 
+-## Overview
++## 概述
+ 
+-Because this repository contains frontend-side API consumption rather than a real backend service, backend quality here means consistency in request wrappers, response typing, and failure handling.
++由于本仓库包含的是前端侧 API 消费，而不是真正的后端服务，这里的后端质量意味着请求封装、响应类型和失败处理的一致性。
+ 
+-The main quality gates visible in the repository are linting and manual verification.
++仓库中可见的主要质量门禁是 lint 和手动验证。
+ 
+ ---
+ 
+-## Forbidden Patterns
++## 禁止模式
+ 
+-- Do not invent backend layers that do not exist in this repository.
+-- Do not hardcode reusable request logic directly in random page components when a shared API module already exists.
+-- Do not introduce a new response contract in the same API domain without need.
+-- Do not copy legacy `any`-heavy request wrappers into new typed modules when `type.ts` already exists nearby.
+-- Do not bypass the shared interceptor behavior without a concrete module-level reason.
++- 不要虚构本仓库中不存在的后端层。
++- 当共享 API 模块已经存在时，不要在随机页面组件中直接硬编码可复用请求逻辑。
++- 没有必要时，不要在同一个 API 领域中引入新的响应契约。
++- 当附近已经存在 `type.ts` 时，不要把大量使用 `any` 的旧请求封装复制到新的类型化模块中。
++- 没有具体的模块级理由时，不要绕过共享拦截器行为。
+ 
+-Examples of existing patterns to improve rather than spread:
++应改进而不是扩散的现有模式示例：
+ - `src/pages/content/content-manage/content-detail/server.ts`
+ - `src/api/employee-search-api/service.ts`
+ 
+ ---
+ 
+-## Required Patterns
++## 必需模式
+ 
+-- Reuse `src/api/index.ts` for shared HTTP initialization and interceptors.
+-- Place reusable requests in `src/api/<domain>/`.
+-- Keep page-only requests close to the page in `server.ts` or `models/server.ts`.
+-- Define request/response contracts in `type.ts` when the module is already typed.
+-- Check backend success flags and surface meaningful user feedback.
++- 复用 `src/api/index.ts` 进行共享 HTTP 初始化和拦截器处理。
++- 将可复用请求放在 `src/api/<domain>/` 中。
++- 将仅页面使用的请求就近放在页面的 `server.ts` 或 `models/server.ts` 中。
++- 当模块已经类型化时，在 `type.ts` 中定义请求/响应契约。
++- 检查后端成功标记，并提供有意义的用户反馈。
+ 
+-Good examples:
++优秀示例：
+ - `src/api/index.ts`
+ - `src/api/ai-chat-api/type.ts`
+ - `src/pages/ai/ai-chat/hooks/useChat.ts`
+ 
+ ---
+ 
+-## Testing Requirements
++## 测试要求
+ 
+-No backend test suite exists in this repository because no backend runtime exists here.
++本仓库中不存在后端测试套件，因为这里没有后端运行时。
+ 
+-Current practical checks for backend-facing changes:
+-- run lint for touched TypeScript/JavaScript files
+-- verify request wrappers still match the consuming page or hook
+-- manually exercise the relevant UI path that calls the backend
++当前对面向后端变更的实际检查包括：
++- 对触及的 TypeScript/JavaScript 文件运行 lint
++- 验证请求封装仍与消费它的页面或钩子匹配
++- 手动操作会调用后端的相关 UI 路径
+ 
+ ---
+ 
+-## Code Review Checklist
++## 代码评审检查清单
+ 
+-Reviewers should check:
+-- Is the request wrapper placed in the right layer (`src/api/**` vs local `server.ts`)?
+-- Does the code preserve the real backend response shape?
+-- Are success and error branches both handled?
+-- Were existing types and interceptors reused?
+-- Does the change document unknown backend details instead of inventing them?
++评审者应检查：
++- 请求封装是否放在正确的层级（`src/api/**` vs 本地 `server.ts`）？
++- 代码是否保留了真实的后端响应结构？
++- 成功和错误分支是否都已处理？
++- 是否复用了已有类型和拦截器？
++- 变更是否记录了未知的后端细节，而不是虚构它们？
+diff --git a/.trellis/spec/frontend/component-guidelines.md b/.trellis/spec/frontend/component-guidelines.md
+index bd00ab4a6..d30f50435 100644
+--- a/.trellis/spec/frontend/component-guidelines.md
++++ b/.trellis/spec/frontend/component-guidelines.md
+@@ -1,73 +1,73 @@
+-# Component Guidelines
++# 组件指南
+ 
+-> How components are built in this project.
++> 本项目中的组件构建方式。
+ 
+ ---
+ 
+-## Overview
++## 概览
+ 
+-Components are function components written in TypeScript. This codebase has both legacy SCSS-style components and newer CSS Modules-based components, so new work should usually follow the style system already used by the surrounding feature.
++组件是使用 TypeScript 编写的函数组件。该代码库同时存在遗留的 SCSS 风格组件和较新的基于 CSS Modules 的组件，因此新工作通常应遵循周边功能已经使用的样式体系。
+ 
+ ---
+ 
+-## Component Structure
++## 组件结构
+ 
+-Common patterns in this repository:
++本仓库中的常见模式：
+ 
+-- Page entry components are often default exports from `index.tsx`.
+-- Feature subcomponents are usually named exports from files under `components/`.
+-- Props are declared close to the component with `interface` or `type`.
+-- Optional prop defaults should use parameter/destructuring defaults, not `Component.defaultProps`.
+-- Complex feature components stay inside the feature folder instead of being extracted globally.
++- 页面入口组件通常从 `index.tsx` 默认导出。
++- 功能子组件通常是 `components/` 下文件中的具名导出。
++- Props 使用 `interface` 或 `type` 声明在组件附近。
++- 可选 prop 默认值应使用参数/解构默认值，而不是 `Component.defaultProps`。
++- 复杂功能组件应保留在功能文件夹内，而不是抽取到全局。
+ 
+-Examples:
+-- `src/pages/ai/ai-chat/index.tsx` uses a page entry component that composes local subcomponents and a local hook.
+-- `src/pages/ai/ai-chat/components/ChatList.tsx` and `src/pages/ai/ai-chat/components/ChatContent.tsx` are named local components.
+-- `src/pages/course-im/components/video-call/VideoCallModal.tsx` keeps heavy feature logic inside the feature module instead of moving it to shared components.
++示例：
++- `src/pages/ai/ai-chat/index.tsx` 使用页面入口组件组合局部子组件和局部 hook。
++- `src/pages/ai/ai-chat/components/ChatList.tsx` 和 `src/pages/ai/ai-chat/components/ChatContent.tsx` 是具名局部组件。
++- `src/pages/course-im/components/video-call/VideoCallModal.tsx` 将较重的功能逻辑保留在功能模块内，而不是移动到共享组件。
+ 
+ ---
+ 
+-## Props Conventions
++## Props 约定
+ 
+-- Prefer explicit `interface`/`type` definitions close to the component.
+-- Reuse domain types from nearby `type.ts` or feature types when available.
+-- Legacy code sometimes uses `any`, but new code should prefer concrete props when the shape is known.
++- 优先在组件附近使用显式 `interface`/`type` 定义。
++- 可用时，复用附近 `type.ts` 或功能类型中的领域类型。
++- 遗留代码有时使用 `any`，但当数据形状已知时，新代码应优先使用具体 props。
+ 
+-Examples:
++示例：
+ - `src/pages/not-found/index.tsx`
+ - `src/pages/content/content-manage/content-detail/editor/index.tsx`
+ - `src/pages/course-im/components/video-call/stores/video-call-store.ts`
+ 
+ ---
+ 
+-## Styling Patterns
++## 样式模式
+ 
+-Use CSS Modules for component and page styles.
++组件和页面样式使用 CSS Modules。
+ 
+-### Convention: CSS Modules only
++### 约定：仅使用 CSS Modules
+ 
+-**What**: Import style objects from `*.module.scss` files.
++**内容**：从 `*.module.scss` 文件导入样式对象。
+ 
+ ```typescript
+ import styles from './index.module.scss';
+ ```
+ 
+-**Why**: CSS Modules keep styles locally scoped and avoid ambiguity between global side-effect SCSS and object-style imports.
++**原因**：CSS Modules 让样式保持局部作用域，并避免全局副作用 SCSS 与对象式导入之间的歧义。
+ 
+-**Wrong**:
++**错误**：
+ ```typescript
+ import './index.scss';
+ import styles from './index.scss';
+ ```
+ 
+-**Correct**:
++**正确**：
+ ```typescript
+ import styles from './index.module.scss';
+ ```
+ 
+-### Convention: Use `classnames` for multi-class composition
++### 约定：使用 `classnames` 组合多个 class
+ 
+-For conditional or multi-class names, use `classnames` instead of template-string stitching:
++对于条件类名或多类名，使用 `classnames`，而不是模板字符串拼接：
+ 
+ ```typescript
+ import classNames from 'classnames';
+@@ -75,31 +75,31 @@ import classNames from 'classnames';
+ className={classNames(styles.tab, active && styles.active)}
+ ```
+ 
+-**Wrong**:
++**错误**：
+ ```typescript
+ className={`${styles.tab} ${active ? styles.active : ''}`}
+ ```
+ 
+-Examples:
+-- CSS Modules: `src/pages/ai/ai-chat/index.tsx`, `src/pages/ai/ai-chat/components/AgentInfo/index.tsx`, `src/pages/course-im/components/chat-input/index.tsx`
++示例：
++- CSS Modules：`src/pages/ai/ai-chat/index.tsx`、`src/pages/ai/ai-chat/components/AgentInfo/index.tsx`、`src/pages/course-im/components/chat-input/index.tsx`
+ 
+ ---
+ 
+-## Accessibility
++## 可访问性
+ 
+-No strong project-wide a11y abstraction was found. Most UI uses Ant Design or project-specific DOM markup directly. When editing components:
++未发现强项目级 a11y 抽象。大多数 UI 直接使用 Ant Design 或项目特定 DOM 标记。编辑组件时：
+ 
+-- Preserve existing button/interactive semantics.
+-- Do not replace real interactive elements with clickable `div`s unless the surrounding code already does so.
+-- Keep text, loading, and error feedback visible to users through the existing UI patterns such as `message.*` and modal feedback.
++- 保留既有按钮/交互语义。
++- 除非周边代码已经这样做，否则不要用可点击 `div` 替换真实交互元素。
++- 通过 `message.*` 和弹窗反馈等既有 UI 模式，保持文本、loading 和 error 反馈对用户可见。
+ 
+ ---
+ 
+-## Common Mistakes
++## 常见错误
+ 
+-- Extracting a component to `src/components` before it is reused across features.
+-- Importing page/component styles from plain `index.scss` instead of `index.module.scss`.
+-- Hand-stitching CSS Module class names when `classnames` is available.
+-- Passing broad `any` props when a local type already exists.
+-- Adding `Component.defaultProps`; prefer `function Component({ flag = false }: Props)`.
+-- Putting API requests directly into a deeply nested presentation component when the page already has a local hook or service wrapper.
++- 在组件被跨功能复用前，就将其抽取到 `src/components`。
++- 从普通 `index.scss` 导入页面/组件样式，而不是 `index.module.scss`。
++- 当 `classnames` 可用时，手工拼接 CSS Module 类名。
++- 当局部类型已经存在时，传递宽泛的 `any` props。
++- 添加 `Component.defaultProps`；优先使用 `function Component({ flag = false }: Props)`。
++- 当页面已经有局部 hook 或 service 封装时，将 API 请求直接放入深层嵌套的展示组件。
+diff --git a/.trellis/spec/frontend/directory-structure.md b/.trellis/spec/frontend/directory-structure.md
+index 762e2f186..9cf7b79c4 100644
+--- a/.trellis/spec/frontend/directory-structure.md
++++ b/.trellis/spec/frontend/directory-structure.md
+@@ -1,18 +1,18 @@
+-# Directory Structure
++# 目录结构
+ 
+-> How frontend code is organized in this project.
++> 本项目中的前端代码组织方式。
+ 
+ ---
+ 
+-## Overview
++## 概览
+ 
+-This repository is a frontend application. Most code lives under `src/` and is organized by business feature first, not by technical layer.
++本仓库是一个前端应用。大多数代码位于 `src/` 下，并优先按业务功能组织，而不是按技术层组织。
+ 
+-Shared infrastructure stays near the root (`src/api`, `src/utils`, `src/components`, `src/commons`), while most feature code lives under `src/pages/<feature>`.
++共享基础设施靠近根目录（`src/api`、`src/utils`、`src/components`、`src/commons`），而大多数功能代码位于 `src/pages/<feature>` 下。
+ 
+ ---
+ 
+-## Directory Layout
++## 目录布局
+ 
+ ```text
+ src/
+@@ -31,39 +31,39 @@ src/
+ 
+ ---
+ 
+-## Module Organization
++## 模块组织
+ 
+-- Put route-level screens under `src/pages/<feature>/index.tsx`.
+-- Keep feature-only components, hooks, assets, stores, and utilities inside the feature directory instead of pushing them to `src/components` too early.
+-- Put shared HTTP wrappers under `src/api/<domain>/` when they are reused across pages.
+-- Page-specific request helpers may still live next to the page as `server.ts` or `models/server.ts`; this is common in older content modules.
++- 将路由级页面放在 `src/pages/<feature>/index.tsx` 下。
++- 将功能专属组件、hooks、assets、stores 和 utilities 保留在功能目录中，不要过早推到 `src/components`。
++- 当共享 HTTP 封装被多个页面复用时，将其放在 `src/api/<domain>/` 下。
++- 页面专属请求辅助函数仍可与页面相邻，作为 `server.ts` 或 `models/server.ts` 存放；这在较旧的内容模块中很常见。
+ 
+-Examples:
+-- `src/pages/ai/ai-chat/` keeps `components/`, `hooks/`, `assets/`, and `index.module.scss` together.
+-- `src/pages/content/content-manage/content-index/` keeps page entry plus `models/server.ts` and `models/type.ts` together.
+-- `src/pages/course-im/` is a large self-contained feature with `components/`, `hooks/`, `stores/`, `types.ts`, and `utils/`.
++示例：
++- `src/pages/ai/ai-chat/` 将 `components/`、`hooks/`、`assets/` 和 `index.module.scss` 放在一起。
++- `src/pages/content/content-manage/content-index/` 将页面入口以及 `models/server.ts` 和 `models/type.ts` 放在一起。
++- `src/pages/course-im/` 是一个大型自包含功能，包含 `components/`、`hooks/`、`stores/`、`types.ts` 和 `utils/`。
+ 
+ ---
+ 
+-## Naming Conventions
++## 命名约定
+ 
+-- Feature folders are usually kebab-case: `ai-chat`, `course-im`, `content-manage`.
+-- Component folders often expose `index.tsx`; newer leaf components may use `PascalCase.tsx`.
+-- Hooks use the `use*` prefix and live in `hooks/` or a component-local `hooks/` folder.
+-- Styles should use CSS Modules: `index.module.scss` or `*.module.scss`.
+-- API type definitions commonly live in `type.ts`.
++- 功能文件夹通常使用 kebab-case：`ai-chat`、`course-im`、`content-manage`。
++- 组件文件夹通常暴露 `index.tsx`；较新的叶子组件可能使用 `PascalCase.tsx`。
++- Hooks 使用 `use*` 前缀，并放在 `hooks/` 或组件局部 `hooks/` 文件夹中。
++- 样式应使用 CSS Modules：`index.module.scss` 或 `*.module.scss`。
++- API 类型定义通常放在 `type.ts` 中。
+ 
+ ---
+ 
+-## Examples
++## 示例
+ 
+-Well-structured modules to copy from nearby code:
++值得从附近代码复制的结构良好模块：
+ - `src/pages/ai/ai-chat/`
+ - `src/pages/ai/ai-image/`
+ - `src/pages/course-im/`
+ - `src/pages/content/content-manage/content-index/`
+ 
+-Anti-patterns to avoid:
+-- Moving feature-local code into `src/components` or `src/utils` before it is actually shared.
+-- Creating a new folder pattern when a neighboring feature already has a clear local structure.
+-- Mixing page entry, API wrappers, and unrelated shared helpers in the same file.
++应避免的反模式：
++- 在功能局部代码真正共享前，将其移动到 `src/components` 或 `src/utils`。
++- 当相邻功能已经有清晰局部结构时，创建新的文件夹模式。
++- 在同一文件中混合页面入口、API 封装和无关共享辅助函数。
+diff --git a/.trellis/spec/frontend/hook-guidelines.md b/.trellis/spec/frontend/hook-guidelines.md
+index dc6b02cc4..692f8baf4 100644
+--- a/.trellis/spec/frontend/hook-guidelines.md
++++ b/.trellis/spec/frontend/hook-guidelines.md
+@@ -1,20 +1,20 @@
+-# Hook Guidelines
++# Hook 指南
+ 
+-> How hooks are used in this project.
++> 本项目中的 hooks 使用方式。
+ 
+ ---
+ 
+-## Overview
++## 概览
+ 
+-Custom hooks are used heavily in newer modules and large interactive features. The repository does not use React Query or SWR; data fetching is usually implemented with `useState`, `useEffect`, and async service calls.
++自定义 hooks 在较新的模块和大型交互功能中被大量使用。仓库未使用 React Query 或 SWR；数据获取通常通过 `useState`、`useEffect` 和异步 service 调用实现。
+ 
+ ---
+ 
+-## High-Priority Rule: No Gratuitous Memoization
++## 高优先级规则：不要无意义地记忆化
+ 
+-Do not add `useMemo` or `useCallback` by default. Prefer plain values and inline functions unless there is a concrete reason: an expensive calculation, a dependency-sensitive effect, or a memoized child that requires stable references.
++不要默认添加 `useMemo` 或 `useCallback`。除非有具体理由，例如昂贵计算、依赖敏感的 effect，或需要稳定引用的已记忆化子组件，否则优先使用普通值和内联函数。
+ 
+-Wrong:
++错误：
+ 
+ ```typescript
+ const handleClick = useCallback(() => {
+@@ -22,7 +22,7 @@ const handleClick = useCallback(() => {
+ }, []);
+ ```
+ 
+-Correct:
++正确：
+ 
+ ```typescript
+ const handleClick = () => {
+@@ -32,67 +32,67 @@ const handleClick = () => {
+ 
+ ---
+ 
+-## Custom Hook Patterns
++## 自定义 Hook 模式
+ 
+-Typical patterns:
++典型模式：
+ 
+-- Place hooks in `hooks/` inside the feature or component that owns the behavior.
+-- Use hooks to hide fetch/load/reload state and side effects.
+-- Use hooks to centralize non-trivial derived view data when the same source list feeds multiple UI regions.
+-- Return data plus imperative actions such as `refetch`, `loadMore`, or setters.
+-- In large real-time modules, hooks may cooperate with Zustand stores.
++- 将 hooks 放在拥有该行为的功能或组件内部的 `hooks/` 中。
++- 使用 hooks 隐藏 fetch/load/reload 状态和副作用。
++- 当同一源列表供给多个 UI 区域时，使用 hooks 集中处理非平凡的派生视图数据。
++- 返回数据以及 `refetch`、`loadMore` 或 setters 等命令式 action。
++- 在大型实时模块中，hooks 可能会与 Zustand stores 协作。
+ 
+-Examples:
+-- `src/pages/ai/ai-chat/hooks/useChat.ts` fetches session lists and paginated chat history, then exposes state and actions.
+-- `src/pages/ai/ai-image/hooks/useUserDrawings.ts` wraps loading, error, data, and `refetch`.
+-- `src/pages/course-im/components/screen-share/hooks/useDraggable.ts` and related hooks keep UI behavior local to the feature.
++示例：
++- `src/pages/ai/ai-chat/hooks/useChat.ts` 获取会话列表和分页聊天历史，然后暴露状态和 action。
++- `src/pages/ai/ai-image/hooks/useUserDrawings.ts` 封装 loading、error、data 和 `refetch`。
++- `src/pages/course-im/components/screen-share/hooks/useDraggable.ts` 及相关 hooks 将 UI 行为保持在功能局部。
+ 
+ ---
+ 
+-## Derived Data Hooks
++## 派生数据 Hooks
+ 
+-When one source list feeds several UI regions, extract a feature-local derived-data hook instead of spreading `filter` / `forEach` across the page.
++当一个源列表供给多个 UI 区域时，提取功能局部的派生数据 hook，而不是在页面中到处散布 `filter` / `forEach`。
+ 
+-- Location: `src/pages/<feature>/hooks/useXxxDerived.ts`.
+-- Input plain values from the page; do not read Zustand stores inside the hook unless the hook owns that subscription.
+-- Derive related counts, maps, and current-scope arrays in one traversal; use `useMemo` only when the traversal is meaningfully expensive or reference stability is required.
+-- Keep stable empty fallbacks at module scope for table-like consumers.
++- 位置：`src/pages/<feature>/hooks/useXxxDerived.ts`。
++- 从页面传入普通值；除非该 hook 拥有对应订阅，否则不要在 hook 内读取 Zustand stores。
++- 在一次遍历中派生相关计数、映射和当前作用域数组；仅当遍历确实昂贵或需要引用稳定性时，才使用 `useMemo`。
++- 为类似表格的消费者在模块作用域保留稳定的空 fallback。
+ 
+ ---
+ 
+-## Data Fetching
++## 数据获取
+ 
+-Current repository pattern:
++当前仓库模式：
+ 
+-- Call request wrappers from `src/api/**` or feature-local `server.ts` files.
+-- Manage `loading`, `error`, and response data inside the hook or page component.
+-- Use `message.error(...)` or throw `Error` when backend responses are unsuccessful.
+-- Manual pagination and manual refetch are common; no shared server-state cache layer was found.
++- 从 `src/api/**` 或功能局部 `server.ts` 文件调用请求封装。
++- 在 hook 或页面组件中管理 `loading`、`error` 和响应数据。
++- 当后端响应不成功时，使用 `message.error(...)` 或抛出 `Error`。
++- 手动分页和手动重新拉取很常见；未发现共享服务端状态缓存层。
+ 
+-Examples:
++示例：
+ - `src/pages/ai/ai-chat/hooks/useChat.ts`
+ - `src/pages/ai/ai-image/hooks/useUserDrawings.ts`
+ - `src/pages/work-preview/hooks/useAiTab.tsx`
+ 
+ ---
+ 
+-## Naming Conventions
++## 命名约定
+ 
+-- Hook names must start with `use`.
+-- Feature hooks usually live in `hooks/useXxx.ts` or `hooks/useXxx.tsx`.
+-- Component-scoped hooks may live under `components/<name>/hooks/` when they are not reused elsewhere.
++- Hook 名称必须以 `use` 开头。
++- 功能 hooks 通常位于 `hooks/useXxx.ts` 或 `hooks/useXxx.tsx`。
++- 当组件作用域 hooks 不在其它地方复用时，可以放在 `components/<name>/hooks/` 下。
+ 
+-Examples:
++示例：
+ - `src/pages/user-board/hooks/useOnlineStatistics.ts`
+ - `src/pages/course-im/hooks/useInitData.tsx`
+ - `src/pages/user-board/components/im-send-modal/components/top-bar/hooks/useTargetSelection.ts`
+ 
+ ---
+ 
+-## Common Mistakes
++## 常见错误
+ 
+-- Adding a data-fetching library when the surrounding feature already uses manual fetch logic.
+-- Duplicating the same request logic in multiple components instead of extracting one local hook.
+-- Returning untyped data when the API module already exports types.
+-- Mixing unrelated responsibilities into one giant hook when the feature already separates behavior into multiple hooks.
+-- When a hook exposes an imperative action reused by multiple UI entries, do not rely only on hook-local `useRef` locks; put in-flight/preflight locks in shared feature state so parallel entry instances cannot duplicate side effects.
++- 当周边功能已经使用手动 fetch 逻辑时，添加数据获取库。
++- 在多个组件中重复同一请求逻辑，而不是提取一个局部 hook。
++- 当 API 模块已经导出类型时，返回未类型化数据。
++- 当功能已经将行为拆分到多个 hooks 中时，把无关职责混入一个巨型 hook。
++- 当 hook 暴露的命令式 action 被多个 UI 入口复用时，不要只依赖 hook 局部的 `useRef` 锁；应将 in-flight/preflight 锁放进共享功能状态，避免并行入口实例重复触发副作用。
+diff --git a/.trellis/spec/frontend/index.md b/.trellis/spec/frontend/index.md
+index 4f1d7f855..05a936531 100644
+--- a/.trellis/spec/frontend/index.md
++++ b/.trellis/spec/frontend/index.md
+@@ -1,39 +1,39 @@
+-# Frontend Development Guidelines
++# 前端开发指南
+ 
+-> Best practices for frontend development in this project.
++> 本项目中的前端开发最佳实践。
+ 
+ ---
+ 
+-## Overview
++## 概览
+ 
+-This directory contains guidelines for frontend development. Fill in each file with your project's specific conventions.
++此目录包含前端开发指南。请在每个文件中填写项目的具体约定。
+ 
+ ---
+ 
+-## Guidelines Index
++## 指南索引
+ 
+-| Guide | Description | Status |
++| 指南 | 说明 | 状态 |
+ |-------|-------------|--------|
+-| [Directory Structure](./directory-structure.md) | Module organization and file layout | Filled |
+-| [Component Guidelines](./component-guidelines.md) | Component patterns, props, composition | Filled |
+-| [Hook Guidelines](./hook-guidelines.md) | Custom hooks, data fetching patterns | Filled |
+-| [State Management](./state-management.md) | Local state, global state, server state | Filled |
+-| [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | Filled |
+-| [Type Safety](./type-safety.md) | Type patterns, validation | Filled |
++| [目录结构](./directory-structure.md) | 模块组织和文件布局 | 已填写 |
++| [组件指南](./component-guidelines.md) | 组件模式、props、组合方式 | 已填写 |
++| [Hook 指南](./hook-guidelines.md) | 自定义 hooks、数据获取模式 | 已填写 |
++| [状态管理](./state-management.md) | 局部状态、全局状态、服务端状态 | 已填写 |
++| [质量指南](./quality-guidelines.md) | 代码标准、禁止模式 | 已填写 |
++| [类型安全](./type-safety.md) | 类型模式、校验 | 已填写 |
+ 
+ ---
+ 
+-## How to Fill These Guidelines
++## 如何填写这些指南
+ 
+-For each guideline file:
++对于每个指南文件：
+ 
+-1. Document your project's **actual conventions** (not ideals)
+-2. Include **code examples** from your codebase
+-3. List **forbidden patterns** and why
+-4. Add **common mistakes** your team has made
++1. 记录项目的**实际约定**（不是理想目标）
++2. 包含来自代码库的**代码示例**
++3. 列出**禁止模式**及其原因
++4. 添加团队曾经犯过的**常见错误**
+ 
+-The goal is to help AI assistants and new team members understand how YOUR project works.
++目标是帮助 AI 助手和新团队成员理解你的项目如何运作。
+ 
+ ---
+ 
+-**Language**: All documentation should be written in **English**.
++**语言**：所有文档应使用**简体中文**。
+diff --git a/.trellis/spec/frontend/quality-guidelines.md b/.trellis/spec/frontend/quality-guidelines.md
+index 9ba4c44eb..a18d68aef 100644
+--- a/.trellis/spec/frontend/quality-guidelines.md
++++ b/.trellis/spec/frontend/quality-guidelines.md
+@@ -1,72 +1,72 @@
+-# Quality Guidelines
++# 质量指南
+ 
+-> Code quality standards for frontend development.
++> 前端开发的代码质量标准。
+ 
+ ---
+ 
+-## Overview
++## 概览
+ 
+-This repository enforces JavaScript/TypeScript linting, but overall quality is still driven mainly by local consistency and manual verification. The most important rule is to follow the neighboring module's established pattern instead of introducing a new architecture inside one feature.
++本仓库执行 JavaScript/TypeScript lint，但整体质量仍主要依赖局部一致性和手动验证。最重要的规则是遵循相邻模块已建立的模式，而不是在单个功能内部引入新架构。
+ 
+-Current tooling from `package.json`:
+-- `npm run eslint` runs `eslint --ext=jsx,ts,tsx src`
+-- pre-commit runs `lint-staged`
+-- staged `*.{js,ts,tsx}` files are checked with `tslint`
++`package.json` 中的当前工具：
++- `npm run eslint` 运行 `eslint --ext=jsx,ts,tsx src`
++- pre-commit 运行 `lint-staged`
++- staged `*.{js,ts,tsx}` 文件会用 `tslint` 检查
+ 
+ ---
+ 
+-## Forbidden Patterns
++## 禁止模式
+ 
+-- Introducing a new state or data-fetching architecture into a feature that already has an established local pattern.
+-- Bypassing `src/api/**` or existing local `server.ts` wrappers for reusable requests.
+-- Moving feature code to global shared folders before it is actually reused.
+-- Copying legacy `any` usage into new typed modules when local types already exist.
+-- Importing page/component styles from plain `index.scss`; use `index.module.scss` / `*.module.scss` instead.
+-- Hand-stitching multiple CSS Module class names with template strings or string concatenation; use `classnames` instead.
+-- Expanding an existing function's responsibility just because a new requirement needs one more call site.
+-- Changing behavior in an old branch unless the requirement explicitly targets that branch.
+-- Adding speculative guards, fallbacks, or "protective" logic without evidence from the contract, product requirement, or observed failure.
++- 在已有明确局部模式的功能中引入新的状态或数据获取架构。
++- 对可复用请求绕过 `src/api/**` 或既有局部 `server.ts` 封装。
++- 在代码真正被复用前，就将功能代码移动到全局共享文件夹。
++- 当局部类型已存在时，将遗留 `any` 用法复制到新的类型化模块。
++- 从普通 `index.scss` 导入页面/组件样式；应使用 `index.module.scss` / `*.module.scss`。
++- 使用模板字符串或字符串拼接手工组合多个 CSS Module 类名；应使用 `classnames`。
++- 仅因为新需求需要多一个调用点，就扩大既有函数的职责。
++- 除非需求明确针对旧分支，否则不要改变旧分支的行为。
++- 在没有契约、产品需求或已观测失败证据的情况下，添加推测性的 guard、fallback 或“保护性”逻辑。
+ 
+-Examples of modules whose local pattern should be preserved:
++应保留其局部模式的模块示例：
+ - `src/pages/ai/ai-chat/`
+ - `src/pages/course-im/`
+ - `src/pages/content/content-manage/`
+ 
+ ---
+ 
+-## Required Patterns
++## 必需模式
+ 
+-- Follow the existing structure of the feature you are touching.
+-- Keep request logic in hooks, stores, or service wrappers instead of burying it in pure presentation components.
+-- Check backend success flags before assuming data is usable.
+-- Show user-visible request failures through existing UI feedback patterns such as `message.error`, `message.warn`, or modal feedback.
+-- Reuse existing types and constants before creating new ones.
+-- Add new requirements only at the necessary call points; keep old call paths and old branch behavior stable.
+-- Introduce an abstraction only when it makes the boundary clearer, such as separating API shape mapping from view state, not when it hides unrelated behavior behind a generic name.
++- 遵循你正在修改的功能的既有结构。
++- 将请求逻辑放在 hooks、stores 或 service 封装中，而不是埋在纯展示组件里。
++- 在假设数据可用前检查后端成功标记。
++- 通过 `message.error`、`message.warn` 或弹窗反馈等既有 UI 反馈模式展示用户可见的请求失败。
++- 创建新类型和常量前，先复用既有类型和常量。
++- 只在必要调用点添加新需求；保持旧调用路径和旧分支行为稳定。
++- 只有当抽象能让边界更清晰时才引入，例如将 API 形状映射与视图状态分离，而不是用泛化名称隐藏无关行为。
+ 
+-Examples:
++示例：
+ - `src/pages/ai/ai-chat/hooks/useChat.ts`
+ - `src/pages/ai/ai-image/hooks/useUserDrawings.ts`
+ - `src/api/index.ts`
+ 
+ ---
+ 
+-## Change Boundary Discipline
++## 变更边界纪律
+ 
+-When extending an existing feature:
+-- Do not change old function responsibilities.
+-- Do not change old branch behavior unless explicitly required.
+-- Add new requirements only at necessary call points.
+-- Abstract only when it makes ownership or boundaries clearer.
+-- Do not add speculative guards, fallbacks, or catch-and-ignore logic.
++扩展既有功能时：
++- 不要改变旧函数职责。
++- 除非明确要求，否则不要改变旧分支行为。
++- 只在必要调用点添加新需求。
++- 只有当抽象能让所有权或边界更清晰时才抽象。
++- 不要添加推测性的 guard、fallback 或 catch-and-ignore 逻辑。
+ 
+-Wrong:
++错误：
+ 
+ ```typescript
+ fetchBoardData(params, { enableNewValidIds: true });
+ ```
+ 
+-Correct:
++正确：
+ 
+ ```typescript
+ fetchNewBoardValidIds(validIdsParams);
+@@ -74,28 +74,28 @@ fetchNewBoardValidIds(validIdsParams);
+ 
+ ---
+ 
+-## Testing Requirements
++## 测试要求
+ 
+-Automated test coverage is minimal in this repository. A few `__mocks__` files exist, but no active unit-test suite pattern was found under `src/`.
++本仓库的自动化测试覆盖很少。存在少量 `__mocks__` 文件，但在 `src/` 下未发现活跃的单元测试套件模式。
+ 
+-Current expectation for routine changes:
+-- run lint on touched TypeScript/JavaScript code
+-- manually verify the changed page or interaction flow
+-- keep changes small and consistent with neighboring code
++常规变更的当前期望：
++- 对触及的 TypeScript/JavaScript 代码运行 lint
++- 手动验证变更页面或交互流程
++- 保持变更小而且与相邻代码一致
+ 
+-Examples of mock/test-adjacent files:
++mock/测试相邻文件示例：
+ - `src/api/ai-chat-api/__mocks__/chatRecord.ts`
+ - `src/api/ai-chat-api/__mocks__/kidsUserHistoryImg.ts`
+ 
+ ---
+ 
+-## Code Review Checklist
++## 代码审查清单
+ 
+-Reviewers should check:
+-- Is the file placed in the same layer and folder style as nearby code?
+-- Did the change reuse the existing API wrapper, hook, store, or local model structure?
+-- Does the module keep the same styling approach as the rest of the feature?
+-- Were existing types reused instead of adding new `any`?
+-- Are loading, empty, and error states still surfaced to users?
+-- Did the change keep old function responsibilities and old branch behavior unchanged unless explicitly required?
+-- Is every new abstraction making ownership and boundaries clearer, not just reducing visible lines of code?
++审查者应检查：
++- 文件是否放在与附近代码相同的层级和文件夹风格中？
++- 变更是否复用了既有 API 封装、hook、store 或局部 model 结构？
++- 模块是否保持了与该功能其它部分一致的样式方案？
++- 是否复用了既有类型，而不是新增 `any`？
++- loading、empty 和 error 状态是否仍然对用户可见？
++- 除非明确要求，变更是否保持了旧函数职责和旧分支行为不变？
++- 每个新抽象是否让所有权和边界更清晰，而不仅仅是减少可见代码行数？
+diff --git a/.trellis/spec/frontend/state-management.md b/.trellis/spec/frontend/state-management.md
+index 74eab5799..383a94c84 100644
+--- a/.trellis/spec/frontend/state-management.md
++++ b/.trellis/spec/frontend/state-management.md
+@@ -1,97 +1,97 @@
+-# State Management
++# 状态管理
+ 
+-> How state is managed in this project.
++> 本项目中的状态管理方式。
+ 
+ ---
+ 
+-## Overview
++## 概览
+ 
+-This project uses a mixed state model:
++本项目使用混合状态模型：
+ 
+-- `useState`/`useEffect` for most page-local UI and request state
+-- Zustand for complex shared client state in newer real-time modules
+-- Manual request/refetch logic for server state
+-- URL query parsing for route-derived state
++- `useState`/`useEffect` 用于大多数页面局部 UI 和请求状态
++- Zustand 用于较新的实时模块中的复杂共享客户端状态
++- 服务端状态使用手动请求/重新拉取逻辑
++- 路由派生状态使用 URL 查询解析
+ 
+-`redux` and `react-redux` exist in dependencies, but active usage was not found in `src/`. Treat Redux as historical unless a specific existing module proves otherwise.
++依赖中存在 `redux` 和 `react-redux`，但在 `src/` 中未发现活跃使用。除非某个具体既有模块证明相反，否则应将 Redux 视为历史遗留。
+ 
+ ---
+ 
+-## State Categories
++## 状态类别
+ 
+-### Local UI state
++### 局部 UI 状态
+ 
+-Used for most pages and simple features.
++用于大多数页面和简单功能。
+ 
+-Examples:
++示例：
+ - `src/pages/ai/ai-chat/hooks/useChat.ts`
+ - `src/pages/ai/ai-image/hooks/useUserDrawings.ts`
+ - `src/pages/content/content-manage/content-detail/index.tsx`
+ 
+-### One-shot child intents
++### 一次性子组件意图
+ 
+-When the parent must nudge a child that owns its own UI state (e.g. tabs), pass **intent + monotonically increasing `key`** instead of lifting all child state. The child tracks the last consumed key, runs the action once per new key, then calls `onConsumed(key)`. The parent clears intent only when `intent.key === consumedKey`, so a slow effect cannot wipe a newer click.
++当父组件必须触发一个拥有自身 UI 状态（例如 tabs）的子组件时，传递 **intent + 单调递增的 `key`**，而不是提升所有子组件状态。子组件记录最后消费的 key，对每个新 key 执行一次动作，然后调用 `onConsumed(key)`。父组件仅在 `intent.key === consumedKey` 时清空 intent，因此较慢的 effect 不会清掉更新的点击。
+ 
+-Use when the child owns normal interactions and the parent only fires occasional switches; same intent repeated must bump `key`. Avoid `defaultActiveKey` for repeatable actions (mount-only); avoid full parent control unless the parent truly owns the flow.
++适用于子组件拥有常规交互、父组件只偶尔触发切换的场景；重复相同 intent 时必须递增 `key`。避免将 `defaultActiveKey` 用于可重复动作（它只在挂载时生效）；除非父组件真正拥有该流程，否则避免完全由父组件控制。
+ 
+-### Shared client state
++### 共享客户端状态
+ 
+-Use Zustand when state must be shared across many components or long-lived feature flows.
++当状态必须在多个组件或长生命周期功能流程之间共享时，使用 Zustand。
+ 
+-Examples:
++示例：
+ - `src/pages/course-im/stores/useIM.tsx`
+ - `src/pages/course-im/components/video-call/stores/video-call-store.ts`
+ - `src/pages/user-board/hooks/useOnlineStatistics.ts`
+ 
+-### Server state
++### 服务端状态
+ 
+-Server data is fetched manually through request wrappers and stored in component or hook state. No project-wide cache library was found.
++服务端数据通过请求封装手动获取，并存储在组件或 hook 状态中。未发现项目级缓存库。
+ 
+-Examples:
++示例：
+ - `src/api/ai-chat-api/index.ts`
+ - `src/pages/content/content-manage/content-index/models/server.ts`
+ - `src/pages/content/race-content/models/server.ts`
+ 
+-### URL state
++### URL 状态
+ 
+-Route and query parameters are read directly from the browser location.
++路由和查询参数直接从浏览器 location 读取。
+ 
+-Examples:
++示例：
+ - `src/pages/ai/ai-chat/hooks/useChat.ts`
+ - `src/pages/ai/ai-image/hooks/useUserDrawings.ts`
+ 
+ ---
+ 
+-## When to Use Global State
++## 何时使用全局状态
+ 
+-Promote state to Zustand only when it is shared across multiple branches of a complex feature, especially for:
++仅当状态在复杂功能的多个分支之间共享时，才将状态提升到 Zustand，尤其是：
+ 
+-- real-time connection state
+-- device/media state
+-- long-lived modal/session state
+-- derived state reused by many children
++- 实时连接状态
++- 设备/媒体状态
++- 长生命周期的弹窗/会话状态
++- 被多个子组件复用的派生状态
+ 
+-Good examples:
++优秀示例：
+ - `src/pages/course-im/stores/useIM.tsx`
+ - `src/pages/course-im/components/video-call/stores/video-call-store.ts`
+ - `src/pages/course-im/components/screen-share/stores/screen-share-store.ts`
+ 
+-Do not create a store for one-page form state or one-off fetch results.
++不要为了单页面表单状态或一次性请求结果创建 store。
+ 
+ ---
+ 
+-## Server State
++## 服务端状态
+ 
+-- Use the existing HTTP wrappers and service modules.
+-- Check response flags such as `success` or `code` before trusting data.
+-- Refetch manually after mutations when needed.
+-- In Zustand-based modules, keep transport/session state in the store and fetch remote data through explicit actions.
++- 使用既有 HTTP 封装和 service 模块。
++- 在信任数据前检查 `success` 或 `code` 等响应标记。
++- 必要时在 mutation 后手动重新拉取。
++- 在基于 Zustand 的模块中，将传输/会话状态放在 store 中，并通过显式 action 获取远程数据。
+ 
+ ---
+ 
+-## Common Mistakes
++## 常见错误
+ 
+-- Introducing Redux or React Query patterns into modules that already use plain hooks or Zustand.
+-- Promoting page-local state into a store too early.
+-- Duplicating the same backend payload in several sibling components instead of lifting it to one hook or store.
+-- Selecting too much Zustand state at once when a feature already uses selectors or shallow selection.
++- 将 Redux 或 React Query 模式引入已经使用普通 hooks 或 Zustand 的模块。
++- 过早将页面局部状态提升到 store。
++- 在多个兄弟组件中重复保存同一份后端 payload，而不是将其提升到一个 hook 或 store。
++- 当功能已经使用 selector 或 shallow selection 时，一次性选择过多 Zustand 状态。
+diff --git a/.trellis/spec/frontend/type-safety.md b/.trellis/spec/frontend/type-safety.md
+index d74c776eb..38709be4e 100644
+--- a/.trellis/spec/frontend/type-safety.md
++++ b/.trellis/spec/frontend/type-safety.md
+@@ -1,43 +1,43 @@
+-# Type Safety
++# 类型安全
+ 
+-> Type safety patterns in this project.
++> 本项目中的类型安全模式。
+ 
+ ---
+ 
+-## Overview
++## 概览
+ 
+-The project uses TypeScript, but type strictness is uneven across modules. Newer AI and real-time modules define detailed interfaces and generics, while older content and admin pages still use a lot of `any`.
++项目使用 TypeScript，但各模块的类型严格程度并不一致。较新的 AI 和实时模块定义了详细的接口和泛型，而较旧的内容和管理页面仍然大量使用 `any`。
+ 
+-Write new code to match the local module, but prefer concrete types whenever the shape is already known.
++编写新代码时应匹配本地模块风格，但只要数据形状已知，就优先使用具体类型。
+ 
+ ---
+ 
+-## Type Organization
++## 类型组织
+ 
+-Common organization patterns:
++常见组织模式：
+ 
+-- API contracts in `src/api/<domain>/type.ts`
+-- Page-local contracts in `models/type.ts`
+-- Feature-local interfaces near the hook, store, or component when the type is not shared
+-- Barrel re-exports from `index.ts`
++- API 契约放在 `src/api/<domain>/type.ts`
++- 页面局部契约放在 `models/type.ts`
++- 当类型不共享时，将功能局部接口放在 hook、store 或组件附近
++- 从 `index.ts` 进行桶式再导出
+ 
+-Examples:
++示例：
+ - `src/api/ai-chat-api/type.ts`
+ - `src/pages/content/content-manage/content-index/models/type.ts`
+ - `src/pages/user-board/hooks/useOnlineStatistics.ts`
+ 
+ ---
+ 
+-## Validation
++## 校验
+ 
+-No runtime schema library such as Zod, Yup, or io-ts is used in the application code.
++应用代码中未使用 Zod、Yup 或 io-ts 等运行时 schema 库。
+ 
+-Current validation is manual:
+-- check required params before requests
+-- inspect backend flags like `success` or `code`
+-- convert backend error codes to messages through helper functions
++当前校验是手动完成的：
++- 请求前检查必要参数
++- 检查 `success` 或 `code` 等后端标记
++- 通过辅助函数将后端错误码转换为消息
+ 
+-Examples:
++示例：
+ - `src/pages/ai/ai-chat/hooks/useChat.ts`
+ - `src/utils/error-parse.ts`
+ - `src/api/index.ts`
+@@ -72,25 +72,25 @@ export const fetchCount = async(payload: Params): Promise<Item[]> => {
+ 
+ ---
+ 
+-## Common Patterns
++## 常见模式
+ 
+-- Generic API response wrappers appear in typed modules, for example `IApiResponse<T>` in `src/api/ai-chat-api/type.ts`.
+-- Enums are used for backend/domain values, for example `DialogModeEnum` and `TabTypeEnum` in `src/api/ai-chat-api/type.ts`.
+-- Zustand stores often declare state and action interfaces together, for example `src/pages/course-im/stores/useIM.tsx` and `src/pages/course-im/components/video-call/stores/video-call-store.ts`.
+-- Legacy code may cast route params with `as any` or `as unknown as ...` when query parsing is weakly typed.
++- 泛型 API 响应封装会出现在已类型化的模块中，例如 `src/api/ai-chat-api/type.ts` 中的 `IApiResponse<T>`。
++- 枚举用于后端/领域取值，例如 `src/api/ai-chat-api/type.ts` 中的 `DialogModeEnum` 和 `TabTypeEnum`。
++- Zustand store 通常同时声明 state 和 action 接口，例如 `src/pages/course-im/stores/useIM.tsx` 和 `src/pages/course-im/components/video-call/stores/video-call-store.ts`。
++- 当查询解析类型较弱时，遗留代码可能会使用 `as any` 或 `as unknown as ...` 转换路由参数。
+ 
+ ---
+ 
+-## Forbidden Patterns
++## 禁止模式
+ 
+-Avoid adding new weak typing when a clear type already exists nearby:
++当附近已经存在清晰类型时，避免新增弱类型：
+ 
+-- Do not introduce fresh `any` in new code if the response, props, or state shape is known.
+-- Do not return raw untyped API payloads from a new shared API module when a `type.ts` file exists.
+-- Do not use `as any` as a shortcut except for unavoidable library interop.
+-- Do not invent a second response shape in the same API domain.
++- 如果响应、props 或 state 形状已知，不要在新代码中引入新的 `any`。
++- 当存在 `type.ts` 文件时，不要从新的共享 API 模块返回原始未类型化 API payload。
++- 除非是无法避免的库互操作，否则不要用 `as any` 作为捷径。
++- 不要在同一 API 领域中发明第二套响应形状。
+ 
+-Existing weakly typed examples that should not be copied blindly:
++以下既有弱类型示例不应盲目复制：
+ - `src/pages/content/content-manage/content-detail/server.ts`
+ - `src/api/employee-search-api/service.ts`
+ - `src/pages/content/content-manage/content-detail/index.tsx`
+diff --git a/.trellis/spec/global b/.trellis/spec/global
+new file mode 120000
+index 000000000..9fa942142
+--- /dev/null
++++ b/.trellis/spec/global
+@@ -0,0 +1 @@
++/Users/am/.trellis/spec
+\ No newline at end of file
+diff --git a/.trellis/spec/guides/code-reuse-thinking-guide.md b/.trellis/spec/guides/code-reuse-thinking-guide.md
+index f9d5f99bb..0aa228088 100644
+--- a/.trellis/spec/guides/code-reuse-thinking-guide.md
++++ b/.trellis/spec/guides/code-reuse-thinking-guide.md
+@@ -1,23 +1,23 @@
+-# Code Reuse Thinking Guide
++# 代码复用思考指南
+ 
+-> **Purpose**: Stop and think before creating new code - does it already exist?
++> **目的**：在创建新代码前停下来思考——它是否已经存在？
+ 
+ ---
+ 
+-## The Problem
++## 问题
+ 
+-**Duplicated code is the #1 source of inconsistency bugs.**
++**重复代码是不一致 bug 的头号来源。**
+ 
+-When you copy-paste or rewrite existing logic:
+-- Bug fixes don't propagate
+-- Behavior diverges over time
+-- Codebase becomes harder to understand
++当你复制粘贴或重写已有逻辑时：
++- bug 修复不会自动传播
++- 行为会随着时间逐渐分化
++- 代码库会变得更难理解
+ 
+ ---
+ 
+-## Before Writing New Code
++## 编写新代码前
+ 
+-### Step 1: Search First
++### 步骤 1：先搜索
+ 
+ ```bash
+ # Search for similar function names
+@@ -27,79 +27,79 @@ grep -r "functionName" .
+ grep -r "keyword" .
+ ```
+ 
+-### Step 2: Ask These Questions
++### 步骤 2：提出这些问题
+ 
+-| Question | If Yes... |
++| 问题 | 如果是…… |
+ |----------|-----------|
+-| Does a similar function exist? | Use or extend it |
+-| Is this pattern used elsewhere? | Follow the existing pattern |
+-| Could this be a shared utility? | Create it in the right place |
+-| Am I copying code from another file? | **STOP** - extract to shared |
++| 是否存在类似函数？ | 使用或扩展它 |
++| 这个模式是否在其它地方使用？ | 遵循已有模式 |
++| 这是否可以成为共享工具？ | 在正确位置创建它 |
++| 我是否正在从另一个文件复制代码？ | **停止**——提取为共享代码 |
+ 
+ ---
+ 
+-## Common Duplication Patterns
++## 常见重复模式
+ 
+-### Pattern 1: Copy-Paste Functions
++### 模式 1：复制粘贴函数
+ 
+-**Bad**: Copying a validation function to another file
++**坏做法**：把一个校验函数复制到另一个文件
+ 
+-**Good**: Extract to shared utilities, import where needed
++**好做法**：提取到共享工具中，并在需要处导入
+ 
+-### Pattern 2: Similar Components
++### 模式 2：相似组件
+ 
+-**Bad**: Creating a new component that's 80% similar to existing
++**坏做法**：创建一个与已有组件 80% 相似的新组件
+ 
+-**Good**: Extend existing component with props/variants
++**好做法**：通过 props/variants 扩展已有组件
+ 
+-### Pattern 3: Repeated Constants
++### 模式 3：重复常量
+ 
+-**Bad**: Defining the same constant in multiple files
++**坏做法**：在多个文件中定义相同常量
+ 
+-**Good**: Single source of truth, import everywhere
++**好做法**：单一事实来源，到处导入使用
+ 
+ ---
+ 
+-## When to Abstract
++## 什么时候抽象
+ 
+-**Abstract when**:
+-- Same code appears 3+ times
+-- Logic is complex enough to have bugs
+-- Multiple people might need this
++**应该抽象的情况**：
++- 相同代码出现 3 次以上
++- 逻辑复杂到可能产生 bug
++- 多个人可能会需要它
+ 
+-**Don't abstract when**:
+-- Only used once
+-- Trivial one-liner
+-- Abstraction would be more complex than duplication
++**不应该抽象的情况**：
++- 只使用一次
++- 简单的一行代码
++- 抽象会比重复更复杂
+ 
+ ---
+ 
+-## After Batch Modifications
++## 批量修改后
+ 
+-When you've made similar changes to multiple files:
++当你对多个文件做了类似修改时：
+ 
+-1. **Review**: Did you catch all instances?
+-2. **Search**: Run grep to find any missed
+-3. **Consider**: Should this be abstracted?
++1. **复查**：是否覆盖了所有实例？
++2. **搜索**：运行 grep 查找是否有遗漏
++3. **考虑**：这是否应该被抽象？
+ 
+ ---
+ 
+-## Gotcha: Asymmetric Mechanisms Producing Same Output
++## 易踩坑：不同机制产生相同输出
+ 
+-**Problem**: When two different mechanisms must produce the same file set (e.g., recursive directory copy for init vs. manual `files.set()` for update), structural changes (renaming, moving, adding subdirectories) only propagate through the automatic mechanism. The manual one silently drifts.
++**问题**：当两个不同机制必须产生同一组文件时（例如 init 使用递归目录复制，而 update 手动调用 `files.set()`），结构变更（重命名、移动、添加子目录）只会通过自动机制传播。手动机制会悄悄漂移。
+ 
+-**Symptom**: Init works perfectly, but update creates files at wrong paths or misses files entirely.
++**症状**：Init 工作完全正常，但 update 会在错误路径创建文件，或完全漏掉文件。
+ 
+-**Prevention checklist**:
+-- [ ] When migrating directory structures, search for ALL code paths that reference the old structure
+-- [ ] If one path is auto-derived (glob/copy) and another is manually listed, the manual one needs updating
+-- [ ] Add a regression test that compares outputs from both mechanisms
++**预防清单**：
++- [ ] 迁移目录结构时，搜索所有引用旧结构的代码路径
++- [ ] 如果一条路径是自动推导的（glob/copy），另一条是手动列出的，那么手动路径也需要更新
++- [ ] 添加一个回归测试，对比两种机制的输出
+ 
+ ---
+ 
+-## Checklist Before Commit
++## 提交前清单
+ 
+-- [ ] Searched for existing similar code
+-- [ ] No copy-pasted logic that should be shared
+-- [ ] Constants defined in one place
+-- [ ] Similar patterns follow same structure
++- [ ] 已搜索现有类似代码
++- [ ] 没有应当共享却复制粘贴的逻辑
++- [ ] 常量只在一个位置定义
++- [ ] 相似模式遵循相同结构
+diff --git a/.trellis/spec/guides/cross-layer-thinking-guide.md b/.trellis/spec/guides/cross-layer-thinking-guide.md
+index 2d1dee398..009a4baa3 100644
+--- a/.trellis/spec/guides/cross-layer-thinking-guide.md
++++ b/.trellis/spec/guides/cross-layer-thinking-guide.md
+@@ -1,94 +1,94 @@
+-# Cross-Layer Thinking Guide
++# 跨层思考指南
+ 
+-> **Purpose**: Think through data flow across layers before implementing.
++> **目的**：在实现前梳理跨层数据流。
+ 
+ ---
+ 
+-## The Problem
++## 问题
+ 
+-**Most bugs happen at layer boundaries**, not within layers.
++**大多数 bug 发生在层边界**，而不是层内部。
+ 
+-Common cross-layer bugs:
+-- API returns format A, frontend expects format B
+-- Database stores X, service transforms to Y, but loses data
+-- Multiple layers implement the same logic differently
++常见跨层 bug：
++- API 返回格式 A，前端期望格式 B
++- Database 存储 X，service 转换为 Y，但丢失了数据
++- 多个层以不同方式实现相同逻辑
+ 
+ ---
+ 
+-## Before Implementing Cross-Layer Features
++## 实现跨层功能前
+ 
+-### Step 1: Map the Data Flow
++### 步骤 1：映射数据流
+ 
+-Draw out how data moves:
++画出数据如何流动：
+ 
+ ```
+ Source → Transform → Store → Retrieve → Transform → Display
+ ```
+ 
+-For each arrow, ask:
+-- What format is the data in?
+-- What could go wrong?
+-- Who is responsible for validation?
++对每个箭头提问：
++- 数据是什么格式？
++- 可能出什么问题？
++- 谁负责校验？
+ 
+-### Step 2: Identify Boundaries
++### 步骤 2：识别边界
+ 
+-| Boundary | Common Issues |
++| 边界 | 常见问题 |
+ |----------|---------------|
+-| API ↔ Service | Type mismatches, missing fields |
+-| Service ↔ Database | Format conversions, null handling |
+-| Backend ↔ Frontend | Serialization, date formats |
+-| Component ↔ Component | Props shape changes |
++| API ↔ Service | 类型不匹配、字段缺失 |
++| Service ↔ Database | 格式转换、null 处理 |
++| Backend ↔ Frontend | 序列化、日期格式 |
++| Component ↔ Component | Props 形状变化 |
+ 
+-### Step 3: Define Contracts
++### 步骤 3：定义契约
+ 
+-For each boundary:
+-- What is the exact input format?
+-- What is the exact output format?
+-- What errors can occur?
++对每个边界：
++- 精确的输入格式是什么？
++- 精确的输出格式是什么？
++- 可能发生哪些错误？
+ 
+ ---
+ 
+-## Common Cross-Layer Mistakes
++## 常见跨层错误
+ 
+-### Mistake 1: Implicit Format Assumptions
++### 错误 1：隐式格式假设
+ 
+-**Bad**: Assuming date format without checking
++**坏做法**：不检查就假设日期格式
+ 
+-**Good**: Explicit format conversion at boundaries
++**好做法**：在边界处进行显式格式转换
+ 
+-### Mistake 2: Scattered Validation
++### 错误 2：分散校验
+ 
+-**Bad**: Validating the same thing in multiple layers
++**坏做法**：在多个层校验同一件事
+ 
+-**Good**: Validate once at the entry point
++**好做法**：在入口点只校验一次
+ 
+-### Mistake 3: Leaky Abstractions
++### 错误 3：泄漏抽象
+ 
+-**Bad**: Component knows about database schema
++**坏做法**：Component 知道 Database schema
+ 
+-**Good**: Each layer only knows its neighbors
++**好做法**：每一层只知道它的相邻层
+ 
+ ---
+ 
+-## Checklist for Cross-Layer Features
++## 跨层功能清单
+ 
+-Before implementation:
+-- [ ] Mapped the complete data flow
+-- [ ] Identified all layer boundaries
+-- [ ] Defined format at each boundary
+-- [ ] Decided where validation happens
++实现前：
++- [ ] 已映射完整数据流
++- [ ] 已识别所有层边界
++- [ ] 已定义每个边界的格式
++- [ ] 已决定在哪里进行校验
+ 
+-After implementation:
+-- [ ] Tested with edge cases (null, empty, invalid)
+-- [ ] Verified error handling at each boundary
+-- [ ] Checked data survives round-trip
++实现后：
++- [ ] 已使用边界情况测试（null、空值、无效值）
++- [ ] 已验证每个边界的错误处理
++- [ ] 已检查数据能在往返过程中保持完整
+ 
+ ---
+ 
+-## When to Create Flow Documentation
++## 什么时候创建流程文档
+ 
+-Create detailed flow docs when:
+-- Feature spans 3+ layers
+-- Multiple teams are involved
+-- Data format is complex
+-- Feature has caused bugs before
++在以下情况创建详细流程文档：
++- 功能跨越 3 个以上层
++- 涉及多个团队
++- 数据格式复杂
++- 功能以前导致过 bug
+diff --git a/.trellis/spec/guides/index.md b/.trellis/spec/guides/index.md
+index 147c79bd2..24aabbea1 100644
+--- a/.trellis/spec/guides/index.md
++++ b/.trellis/spec/guides/index.md
+@@ -1,79 +1,79 @@
+-# Thinking Guides
++# 思考指南
+ 
+-> **Purpose**: Expand your thinking to catch things you might not have considered.
++> **目的**：拓展你的思考范围，发现可能尚未考虑到的问题。
+ 
+ ---
+ 
+-## Why Thinking Guides?
++## 为什么需要思考指南？
+ 
+-**Most bugs and tech debt come from "didn't think of that"**, not from lack of skill:
++**大多数 bug 和技术债都来自“没想到这一点”**，而不是能力不足：
+ 
+-- Didn't think about what happens at layer boundaries → cross-layer bugs
+-- Didn't think about code patterns repeating → duplicated code everywhere
+-- Didn't think about edge cases → runtime errors
+-- Didn't think about future maintainers → unreadable code
++- 没有考虑层边界会发生什么 → 跨层 bug
++- 没有考虑代码模式反复出现 → 到处都是重复代码
++- 没有考虑边界情况 → 运行时错误
++- 没有考虑未来维护者 → 代码难以阅读
+ 
+-These guides help you **ask the right questions before coding**.
++这些指南帮助你**在编码前提出正确的问题**。
+ 
+ ---
+ 
+-## Available Guides
++## 可用指南
+ 
+-| Guide | Purpose | When to Use |
++| 指南 | 目的 | 使用时机 |
+ |-------|---------|-------------|
+-| [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | When you notice repeated patterns |
+-| [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
++| [代码复用思考指南](./code-reuse-thinking-guide.md) | 识别模式并减少重复 | 当你注意到重复模式时 |
++| [跨层思考指南](./cross-layer-thinking-guide.md) | 梳理跨层数据流 | 功能跨越多个层时 |
+ 
+ ---
+ 
+-## Quick Reference: Thinking Triggers
++## 快速参考：思考触发点
+ 
+-### When to Think About Cross-Layer Issues
++### 什么时候思考跨层问题
+ 
+-- [ ] Feature touches 3+ layers (API, Service, Component, Database)
+-- [ ] Data format changes between layers
+-- [ ] Multiple consumers need the same data
+-- [ ] You're not sure where to put some logic
++- [ ] 功能涉及 3 个以上层（API、Service、Component、Database）
++- [ ] 数据格式在层之间发生变化
++- [ ] 多个消费者需要相同数据
++- [ ] 你不确定某段逻辑应该放在哪里
+ 
+-→ Read [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md)
++→ 阅读 [跨层思考指南](./cross-layer-thinking-guide.md)
+ 
+-### When to Think About Code Reuse
++### 什么时候思考代码复用
+ 
+-- [ ] You're writing similar code to something that exists
+-- [ ] You see the same pattern repeated 3+ times
+-- [ ] You're adding a new field to multiple places
+-- [ ] **You're modifying any constant or config**
+-- [ ] **You're creating a new utility/helper function** ← Search first!
++- [ ] 你正在编写与已有代码相似的代码
++- [ ] 你看到相同模式重复出现 3 次以上
++- [ ] 你正在把一个新字段添加到多个位置
++- [ ] **你正在修改任何常量或配置**
++- [ ] **你正在创建新的工具/辅助函数** ← 先搜索！
+ 
+-→ Read [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md)
++→ 阅读 [代码复用思考指南](./code-reuse-thinking-guide.md)
+ 
+ ---
+ 
+-## Pre-Modification Rule (CRITICAL)
++## 修改前规则（重要）
+ 
+-> **Before changing ANY value, ALWAYS search first!**
++> **在修改任何值之前，始终先搜索！**
+ 
+ ```bash
+ # Search for the value you're about to change
+ grep -r "value_to_change" .
+ ```
+ 
+-This single habit prevents most "forgot to update X" bugs.
++这个简单习惯可以避免大多数“忘记更新 X”的 bug。
+ 
+ ---
+ 
+-## How to Use This Directory
++## 如何使用本目录
+ 
+-1. **Before coding**: Skim the relevant thinking guide
+-2. **During coding**: If something feels repetitive or complex, check the guides
+-3. **After bugs**: Add new insights to the relevant guide (learn from mistakes)
++1. **编码前**：快速浏览相关思考指南
++2. **编码中**：如果某些内容显得重复或复杂，查看这些指南
++3. **修复 bug 后**：把新的经验补充到相关指南中（从错误中学习）
+ 
+ ---
+ 
+-## Contributing
++## 贡献
+ 
+-Found a new "didn't think of that" moment? Add it to the relevant guide.
++发现新的“没想到这一点”的时刻？把它添加到相关指南中。
+ 
+ ---
+ 
+-**Core Principle**: 30 minutes of thinking saves 3 hours of debugging.
++**核心原则**：思考 30 分钟，节省 3 小时调试时间。
+diff --git a/.cursorrules b/.cursorrules
+new file mode 100644
+index 000000000..d4a6c7e8b
+--- /dev/null
++++ b/.cursorrules
+@@ -0,0 +1,3 @@
++
++# 子代理规则
++- 使用自定义的 codebase-search 替代内置 Explore 子代理
+diff --git a/.cursor/agents/codebase-search.md b/.cursor/agents/codebase-search.md
+new file mode 100644
+index 000000000..f3b2a1c9d
+--- /dev/null
++++ b/.cursor/agents/codebase-search.md
+@@ -0,0 +1,29 @@
++---
++name: codebase-search
++description: >
++  Codebase search and analysis agent. Use for ANY task that involves
++  finding files, searching code patterns, tracing dependencies, locating
++  definitions/usages, grep across the project, or understanding code
++  structure. When you need to explore the codebase, use this agent
++  instead of the built-in Explore subagent.
++model: inherit
++readonly: true
++is_background: true
++---
++
++# Codebase Search Agent
++
++You are a codebase exploration specialist. Search and analyze
++the codebase efficiently, return concise relevant results.
++
++## Strategy
++
++1. Start broad: glob/grep to locate relevant files
++2. Narrow down: read specific files for context
++3. Summarize: return only what the parent agent needs
++
++## Rules
++
++- Return structured results: file path + line number + summary
++- Never modify files — read-only
++- Filter large result sets by relevance before returning
++- Prefer exact matches over fuzzy
++- Trace dependencies both forward and backward
+diff --git a/.trellis/config.yaml b/.trellis/config.yaml
+index 8e7fcc7..43830a5 100644
+--- a/.trellis/config.yaml
++++ b/.trellis/config.yaml
+@@ -22,15 +22,15 @@ max_journal_lines: 2000
+ # Each hook receives TASK_JSON_PATH environment variable pointing to task.json.
+ # Hook failures print a warning but do not block the main operation.
+ #
+-# hooks:
+-#   after_create:
+-#     - "echo 'Task created'"
+-#   after_start:
+-#     - "echo 'Task started'"
+-#   after_finish:
+-#     - "echo 'Task finished'"
+-#   after_archive:
+-#     - "echo 'Task archived'"
++hooks:
++  after_create:
++    - "python3 .trellis/scripts/hooks/metrics_log.py create"
++  after_start:
++    - "python3 .trellis/scripts/hooks/metrics_log.py start"
++  after_finish:
++    - "python3 .trellis/scripts/hooks/metrics_log.py finish"
++  after_archive:
++    - "python3 .trellis/scripts/hooks/metrics_log.py archive"
+ 
+ #-------------------------------------------------------------------------------
+ # Monorepo / Packages
+diff --git a/.trellis/scripts/hooks/metrics_log.py b/.trellis/scripts/hooks/metrics_log.py
+new file mode 100644
+index 0000000..3e2d2d1
+--- /dev/null
++++ b/.trellis/scripts/hooks/metrics_log.py
+@@ -0,0 +1,180 @@
++#!/usr/bin/env python3
++"""Metrics 采集 hook — task 生命周期事件自动追加 JSONL。
++
++在 task.py 的 after_create/after_start/after_finish/after_archive hook 中调用，
++自动记录任务生命周期事件到月度 JSONL 文件。
++
++Usage (called automatically by task.py hooks):
++    python3 .trellis/scripts/hooks/metrics_log.py create
++    python3 .trellis/scripts/hooks/metrics_log.py start
++    python3 .trellis/scripts/hooks/metrics_log.py finish
++    python3 .trellis/scripts/hooks/metrics_log.py archive
++
++Environment:
++    TASK_JSON_PATH  - Absolute path to task.json (set by task.py)
++"""
++
++from __future__ import annotations
++
++import json
++import os
++import sys
++from datetime import datetime, timezone
++from pathlib import Path
++
++# ─── 公共模块引入 ──────────────────────────────────────────────────────────
++# 将 scripts/ 目录加入 sys.path，使 common 包可被 import
++# 同时将 common/ 也加入，以便 from paths import ... 等直接导入
++_SCRIPTS_DIR = str(Path(__file__).resolve().parent.parent)
++sys.path.insert(0, _SCRIPTS_DIR)
++sys.path.insert(0, str(Path(_SCRIPTS_DIR) / "common"))
++
++from paths import get_repo_root, get_developer, get_workspace_dir  # noqa: E402
++
++# 使用 import 而非 from import 避免与 Python 标准库 io 冲突
++import common.io as io_utils  # noqa: E402
++
++
++# ─── 事件映射 ────────────────────────────────────────────────────────────────
++# action → event 名称
++ACTION_EVENTS = {
++    "create": "task.create",
++    "start": "task.start",
++    "finish": "task.finish",
++    "archive": "task.archive",
++}
++
++
++# ─── 辅助函数 ────────────────────────────────────────────────────────────────
++
++
++def _read_task() -> dict | None:
++    """读取 TASK_JSON_PATH 指向的 task.json，失败返回 None。"""
++    path = os.environ.get("TASK_JSON_PATH", "")
++    if not path:
++        print("[metrics_log] TASK_JSON_PATH not set, skipping", file=sys.stderr)
++        return None
++    return io_utils.read_json(Path(path))
++
++
++def _metrics_jsonl_path(repo_root: Path, developer: str) -> Path:
++    """返回当月的 metrics JSONL 文件路径。
++
++    格式: .trellis/workspace/{dev}/metrics-{YYYY-MM}.jsonl
++    """
++    workspace = get_workspace_dir(repo_root)
++    if workspace:
++        base = workspace
++    else:
++        # fallback: 手动构造路径
++        base = repo_root / ".trellis" / "workspace" / developer
++    month = datetime.now().strftime("%Y-%m")
++    return base / f"metrics-{month}.jsonl"
++
++
++def _append_jsonl(path: Path, record: dict) -> None:
++    """追加一行 JSONL，目录不存在则创建。"""
++    path.parent.mkdir(parents=True, exist_ok=True)
++    line = json.dumps(record, ensure_ascii=False)
++    with open(path, "a", encoding="utf-8") as f:
++        f.write(line + "\n")
++
++
++# ─── 各 action 处理 ──────────────────────────────────────────────────────────
++
++
++def cmd_create() -> None:
++    """记录 task.create 事件。"""
++    task = _read_task()
++    repo_root = get_repo_root()
++    developer = get_developer(repo_root)
++    if not developer:
++        print("[metrics_log] No developer set, skipping", file=sys.stderr)
++        return
++    task_name = task.get("name", "") if task else ""
++    task_title = task.get("title", "") if task else ""
++    record = {
++        "ts": datetime.now(timezone.utc).isoformat(),
++        "event": ACTION_EVENTS["create"],
++        "task": task_name,
++        "title": task_title,
++    }
++    jsonl_path = _metrics_jsonl_path(repo_root, developer)
++    _append_jsonl(jsonl_path, record)
++    print(f"[metrics_log] Logged task.create for {task_name}")
++
++
++def cmd_start() -> None:
++    """记录 task.start 事件。"""
++    task = _read_task()
++    repo_root = get_repo_root()
++    developer = get_developer(repo_root)
++    if not developer:
++        print("[metrics_log] No developer set, skipping", file=sys.stderr)
++        return
++    task_name = task.get("name", "") if task else ""
++    record = {
++        "ts": datetime.now(timezone.utc).isoformat(),
++        "event": ACTION_EVENTS["start"],
++        "task": task_name,
++    }
++    jsonl_path = _metrics_jsonl_path(repo_root, developer)
++    _append_jsonl(jsonl_path, record)
++    print(f"[metrics_log] Logged task.start for {task_name}")
++
++
++def cmd_finish() -> None:
++    """记录 task.finish 事件。"""
++    task = _read_task()
++    repo_root = get_repo_root()
++    developer = get_developer(repo_root)
++    if not developer:
++        print("[metrics_log] No developer set, skipping", file=sys.stderr)
++        return
++    task_name = task.get("name", "") if task else ""
++    record = {
++        "ts": datetime.now(timezone.utc).isoformat(),
++        "event": ACTION_EVENTS["finish"],
++        "task": task_name,
++    }
++    jsonl_path = _metrics_jsonl_path(repo_root, developer)
++    _append_jsonl(jsonl_path, record)
++    print(f"[metrics_log] Logged task.finish for {task_name}")
++
++
++def cmd_archive() -> None:
++    """记录 task.archive 事件。"""
++    task = _read_task()
++    repo_root = get_repo_root()
++    developer = get_developer(repo_root)
++    if not developer:
++        print("[metrics_log] No developer set, skipping", file=sys.stderr)
++        return
++    task_name = task.get("name", "") if task else ""
++    record = {
++        "ts": datetime.now(timezone.utc).isoformat(),
++        "event": ACTION_EVENTS["archive"],
++        "task": task_name,
++    }
++    jsonl_path = _metrics_jsonl_path(repo_root, developer)
++    _append_jsonl(jsonl_path, record)
++    print(f"[metrics_log] Logged task.archive for {task_name}")
++
++
++# ─── 主入口 ─────────────────────────────────────────────────────────────────
++
++if __name__ == "__main__":
++    action = sys.argv[1] if len(sys.argv) > 1 else ""
++    actions = {
++        "create": cmd_create,
++        "start": cmd_start,
++        "finish": cmd_finish,
++        "archive": cmd_archive,
++    }
++    fn = actions.get(action)
++    if fn:
++        fn()
++    else:
++        print(f"Unknown action: {action}", file=sys.stderr)
++        print(f"Valid actions: {', '.join(actions)}", file=sys.stderr)
++        sys.exit(1)
+diff --git a/.trellis/scripts/metrics.py b/.trellis/scripts/metrics.py
+new file mode 100644
+index 0000000..083d928
+--- /dev/null
++++ b/.trellis/scripts/metrics.py
+@@ -0,0 +1,403 @@
++#!/usr/bin/env python3
++"""Metrics 采集与报告脚本。
++
++支持手动记录事件和汇总月度报告。
++
++Usage:
++    # 手动记录事件（补记）
++    python3 .trellis/scripts/metrics.py log <event-type> [--key value ...]
++    python3 .trellis/scripts/metrics.py log check --pass --issues 0
++    python3 .trellis/scripts/metrics.py log session-end --files-changed 3 --lines-added 50 --lines-removed 10
++    python3 .trellis/scripts/metrics.py log pr-create --pr 42
++    python3 .trellis/scripts/metrics.py log pr-merge --pr 42 --review-comments 2
++
++    # 汇总月度报告
++    python3 .trellis/scripts/metrics.py report [--month YYYY-MM] [--dev name]
++    python3 .trellis/scripts/metrics.py report
++    python3 .trellis/scripts/metrics.py report --month 2026-04
++    python3 .trellis/scripts/metrics.py report --dev beilo
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import sys
++from datetime import datetime, timezone
++from pathlib import Path
++
++# ─── 公共模块引入 ──────────────────────────────────────────────────────────
++# 将 scripts/ 目录加入 sys.path，使 common 包可被 import
++# 同时将 common/ 也加入，以便 from paths import ... 等直接导入
++_SCRIPTS_DIR = str(Path(__file__).resolve().parent)
++sys.path.insert(0, _SCRIPTS_DIR)
++sys.path.insert(0, str(Path(_SCRIPTS_DIR) / "common"))
++
++from paths import get_repo_root, get_developer, get_workspace_dir  # noqa: E402
++from log import Colors, colored  # noqa: E402
++
++
++# ─── JSONL 读写 ──────────────────────────────────────────────────────────────
++
++
++def _metrics_jsonl_path(repo_root: Path, developer: str, month: str) -> Path:
++    """返回指定月份的 metrics JSONL 文件路径。"""
++    workspace = get_workspace_dir(repo_root)
++    if workspace:
++        base = workspace
++    else:
++        # fallback: 手动构造路径
++        base = repo_root / ".trellis" / "workspace" / developer
++    return base / f"metrics-{month}.jsonl"
++
++
++def _read_jsonl(path: Path) -> list[dict]:
++    """读取 JSONL 文件，逐行解析，跳过格式错误行。"""
++    if not path.is_file():
++        return []
++    records = []
++    with open(path, encoding="utf-8") as f:
++        for line_no, line in enumerate(f, 1):
++            line = line.strip()
++            if not line:
++                continue
++            try:
++                records.append(json.loads(line))
++            except json.JSONDecodeError:
++                print(
++                    colored(f"[WARN] 跳过格式错误行 {line_no}: {line[:60]}", Colors.YELLOW),
++                    file=sys.stderr,
++                )
++    return records
++
++
++def _append_jsonl(path: Path, record: dict) -> None:
++    """追加一行 JSONL，目录不存在则创建。"""
++    path.parent.mkdir(parents=True, exist_ok=True)
++    line = json.dumps(record, ensure_ascii=False)
++    with open(path, "a", encoding="utf-8") as f:
++        f.write(line + "\n")
++
++
++# ─── log 子命令 ──────────────────────────────────────────────────────────────
++
++
++def _parse_key_value_args(raw_args: list[str]) -> dict:
++    """解析命令行中任意 --key value 对为 dict。
++
++    支持:
++    - --key value → {"key": value}，值尝试转为 int/float，否则保留字符串
++    - --key (无 value) → {"key": true}，作为布尔标志
++
++    Args:
++        raw_args: parse_known_args 返回的未知参数列表
++
++    Returns:
++        解析后的键值对字典
++    """
++    result: dict = {}
++    skip_next = False
++    for i, arg in enumerate(raw_args):
++        if skip_next:
++            skip_next = False
++            continue
++        if arg.startswith("--"):
++            key = arg[2:].replace("-", "_")  # --files-changed → files_changed
++            # 检查下一个参数是否是值（不以 -- 开头）
++            if i + 1 < len(raw_args) and not raw_args[i + 1].startswith("--"):
++                val = raw_args[i + 1]
++                skip_next = True
++                # 尝试转为数字，保持类型自然
++                try:
++                    result[key] = int(val)
++                except ValueError:
++                    try:
++                        result[key] = float(val)
++                    except ValueError:
++                        result[key] = val
++            else:
++                # 无值则作为布尔 true
++                result[key] = True
++    return result
++
++
++def cmd_log(args: argparse.Namespace, extra: list[str]) -> int:
++    """记录自定义事件到 JSONL。
++
++    接受任意 --key value 对，自动加 ts 和 developer。额外参数通过 parse_known_args 的 extra 传入。
++    """
++    event_type = args.event_type
++    if not event_type:
++        print(colored("Error: event type required", Colors.RED), file=sys.stderr)
++        return 1
++
++    repo_root = get_repo_root()
++    developer = args.dev or get_developer(repo_root)
++    if not developer:
++        print(colored("Error: No developer set. Run init_developer.py first", Colors.RED), file=sys.stderr)
++        return 1
++
++    # 构造记录：自动加 ts + event，其余由 --key value 传入
++    record: dict = {
++        "ts": datetime.now(timezone.utc).isoformat(),
++        "event": event_type,
++    }
++
++    # --pass / --fail 快捷处理：--fail 同时设置 pass=false
++    if "--fail" in extra:
++        record["pass"] = False
++    elif "--pass" in extra:
++        record["pass"] = True
++    # 从 extra 中移除 --pass/--fail，避免 _parse_key_value_args 重复处理
++    filtered_extra = [a for a in extra if a not in ("--pass", "--fail")]
++
++    record.update(_parse_key_value_args(filtered_extra))
++
++    month = datetime.now().strftime("%Y-%m")
++    jsonl_path = _metrics_jsonl_path(repo_root, developer, month)
++    _append_jsonl(jsonl_path, record)
++    print(colored(f"[OK] Logged {event_type} → {jsonl_path.name}", Colors.GREEN))
++    return 0
++
++
++# ─── report 子命令 ───────────────────────────────────────────────────────────
++
++
++def _parse_ts(ts_str: str) -> datetime | None:
++    """解析 ISO 时间戳，失败返回 None。"""
++    try:
++        # 兼容带 Z 和不带 Z 的格式
++        ts_str = ts_str.replace("Z", "+00:00")
++        return datetime.fromisoformat(ts_str)
++    except (ValueError, TypeError):
++        return None
++
++
++def _seconds_to_days(seconds: float) -> str:
++    """将秒数转为易读的天数（保留 1 位小数）。"""
++    days = seconds / 86400
++    if days < 1:
++        return f"{days:.1f}天"
++    return f"{days:.1f}天"
++
++
++def _first_ts(records: list[dict]) -> datetime | None:
++    """取事件列表中最早的时间戳。"""
++    for r in sorted(records, key=lambda x: x.get("ts", "")):
++        ts = _parse_ts(r.get("ts", ""))
++        if ts:
++            return ts
++    return None
++
++
++def cmd_report(args: argparse.Namespace) -> int:
++    """汇总月度 metrics 报告。"""
++    repo_root = get_repo_root()
++    developer = args.dev or get_developer(repo_root)
++    if not developer:
++        print(colored("Error: No developer set. Run init_developer.py first", Colors.RED), file=sys.stderr)
++        return 1
++
++    month = args.month or datetime.now().strftime("%Y-%m")
++    jsonl_path = _metrics_jsonl_path(repo_root, developer, month)
++    records = _read_jsonl(jsonl_path)
++
++    if not records:
++        print(colored(f"无 {month} 的 metrics 数据 ({jsonl_path.name})", Colors.YELLOW))
++        return 0
++
++    # ── 按 task 分组 ─────────────────────────────────────────────────────────
++    tasks: dict[str, dict[str, list[dict]]] = {}  # task_name → {event_type: [records]}
++    for r in records:
++        task_name = r.get("task", "")
++        event = r.get("event", "")
++        if not task_name:
++            continue
++        if task_name not in tasks:
++            tasks[task_name] = {}
++        if event not in tasks[task_name]:
++            tasks[task_name][event] = []
++        tasks[task_name][event].append(r)
++
++    # ── 输出报告 ────────────────────────────────────────────────────────────
++    print(colored(f"\n=== Metrics 月度报告: {month} ({developer}) ===\n", Colors.BLUE))
++
++    # 1. 任务阶段耗时
++    print(colored("── 任务耗时 ──", Colors.CYAN))
++    for task_name, events in sorted(tasks.items()):
++        create_ts = _first_ts(events.get("task.create", []))
++        start_ts = _first_ts(events.get("task.start", []))
++        check_events = events.get("check", [])
++        finish_ts = _first_ts(events.get("task.finish", []))
++        archive_ts = _first_ts(events.get("task.archive", []))
++        pr_create_events = events.get("pr-create", [])
++
++        # 取 task.create 的 title（若有）
++        title = ""
++        create_records = events.get("task.create", [])
++        if create_records:
++            title = create_records[0].get("title", "")
++
++        label = f"{task_name}"
++        if title:
++            label += f" ({title})"
++
++        parts = []
++        # 规划 = task.start.ts - task.create.ts
++        if create_ts and start_ts:
++            plan_sec = (start_ts - create_ts).total_seconds()
++            parts.append(f"规划: {_seconds_to_days(plan_sec)}")
++
++        # 实现 = 首个 check.ts - task.start.ts
++        first_check_ts = _first_ts(check_events)
++        if start_ts and first_check_ts:
++            impl_sec = (first_check_ts - start_ts).total_seconds()
++            parts.append(f"实现: {_seconds_to_days(impl_sec)}")
++
++        # Review = archive.ts - 首个 pr-create.ts（若无 pr，用 finish.ts）
++        if archive_ts:
++            review_base = _first_ts(pr_create_events) or finish_ts
++            if review_base:
++                review_sec = (archive_ts - review_base).total_seconds()
++                parts.append(f"Review: {_seconds_to_days(review_sec)}")
++
++        if parts:
++            print(f"  {label}")
++            print(f"    {', '.join(parts)}")
++        else:
++            print(f"  {label} (无耗时数据)")
++
++    # 2. PR 统计
++    print(colored("\n── PR 统计 ──", Colors.CYAN))
++    all_pr_creates = [r for r in records if r.get("event") == "pr-create"]
++    all_pr_merges = [r for r in records if r.get("event") == "pr-merge"]
++    if all_pr_creates or all_pr_merges:
++        pr_count = len(all_pr_creates)
++        # 一次通过率：merge 时 review_comments == 0 的比例
++        merge_with_comments = [
++            r for r in all_pr_merges
++            if r.get("review_comments", 0) == 0
++        ]
++        one_pass_rate = len(merge_with_comments) / len(all_pr_merges) * 100 if all_pr_merges else 0
++        avg_comments = sum(r.get("review_comments", 0) for r in all_pr_merges) / len(all_pr_merges) if all_pr_merges else 0
++        print(f"  PR 数: {pr_count}")
++        if all_pr_merges:
++            print(f"  一次通过率: {one_pass_rate:.0f}% ({len(merge_with_comments)}/{len(all_pr_merges)})")
++            print(f"  平均 review 评论: {avg_comments:.1f}")
++    else:
++        print("  (无 PR 数据)")
++
++    # 3. Session 统计
++    print(colored("\n── Session 统计 ──", Colors.CYAN))
++    session_ends = [r for r in records if r.get("event") == "session-end"]
++    if session_ends:
++        total_lines = sum(r.get("lines_added", 0) + r.get("lines_removed", 0) for r in session_ends)
++        total_files = sum(r.get("files_changed", 0) for r in session_ends)
++        session_count = len(session_ends)
++        # 估算 token：假设每 session 约 1 万 token
++        est_tokens = session_count * 10000
++        per_10k_output = total_lines / (est_tokens / 10000) if est_tokens > 0 else 0
++        print(f"  Session 数: {session_count}")
++        print(f"  总代码行 (增+删): {total_lines}")
++        print(f"  总文件变更: {total_files}")
++        print(f"  估算 token: {est_tokens:,}")
++        print(f"  每万 token 产出: {per_10k_output:.1f} 行")
++    else:
++        print("  (无 session-end 数据)")
++
++    # 4. Check 统计
++    print(colored("\n── Check 统计 ──", Colors.CYAN))
++    checks = [r for r in records if r.get("event") == "check"]
++    if checks:
++        pass_count = sum(1 for c in checks if c.get("pass") is True)
++        fail_count = sum(1 for c in checks if c.get("pass") is False)
++        total_issues = sum(c.get("issues", 0) for c in checks)
++        print(f"  通过: {pass_count}, 失败: {fail_count}")
++        print(f"  总问题数: {total_issues}")
++    else:
++        print("  (无 check 数据)")
++
++    print()
++    return 0
++
++
++# ─── 主入口 ─────────────────────────────────────────────────────────────────
++
++
++def _parse_log_args(raw_args: list[str]) -> tuple[argparse.Namespace, list[str]]:
++    """解析 log 子命令的参数，返回 (known_args, unknown_args)。
++
++    先解析 event_type 和 --dev，其余 --key value 由 unknown_args 返回。
++    """
++    parser = argparse.ArgumentParser(add_help=False)
++    parser.add_argument("event_type", nargs="?", help="事件类型")
++    parser.add_argument("--dev", help="开发者名称 (默认从 .developer 读取)")
++    return parser.parse_known_args(raw_args)
++
++
++def main() -> int:
++    # 先用最小 parser 判断子命令
++    if len(sys.argv) < 2:
++        # 打印完整帮助
++        _print_full_help()
++        return 1
++
++    subcommand = sys.argv[1]
++
++    if subcommand == "log":
++        # log 子命令：使用 parse_known_args 支持任意 --key value
++        known, extra = _parse_log_args(sys.argv[2:])
++        return cmd_log(known, extra)
++
++    elif subcommand == "report":
++        # report 子命令：标准 argparse
++        parser = argparse.ArgumentParser(
++            description="Metrics 月度报告",
++            formatter_class=argparse.RawDescriptionHelpFormatter,
++        )
++        parser.add_argument("--month", help="月份 YYYY-MM (默认当月)")
++        parser.add_argument("--dev", help="开发者名称 (默认从 .developer 读取)")
++        args = parser.parse_args(sys.argv[2:])
++        return cmd_report(args)
++
++    elif subcommand in ("-h", "--help"):
++        _print_full_help()
++        return 0
++
++    else:
++        print(colored(f"Error: 未知子命令 '{subcommand}'", Colors.RED), file=sys.stderr)
++        _print_full_help()
++        return 1
++
++
++def _print_full_help() -> None:
++    """打印完整帮助。"""
++    print("""Metrics 采集与报告
++
++Usage:
++  python3 .trellis/scripts/metrics.py log <event-type> [--key value ...]
++  python3 .trellis/scripts/metrics.py report [--month YYYY-MM] [--dev name]
++
++示例:
++  # 记录 check 事件
++  python3 .trellis/scripts/metrics.py log check --pass --issues 0
++  python3 .trellis/scripts/metrics.py log check --fail --issues 3
++
++  # 记录 session 结束
++  python3 .trellis/scripts/metrics.py log session-end --files-changed 5 --lines-added 100 --lines-removed 20
++
++  # 记录 PR 事件
++  python3 .trellis/scripts/metrics.py log pr-create --pr 42
++  python3 .trellis/scripts/metrics.py log pr-merge --pr 42 --review-comments 2
++
++  # 查看当月报告
++  python3 .trellis/scripts/metrics.py report
++
++  # 查看指定月份
++  python3 .trellis/scripts/metrics.py report --month 2026-04
++  python3 .trellis/scripts/metrics.py report --dev beilo
++""")
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/.trellis/spec/guides/index.md b/.trellis/spec/guides/index.md
+index de62506..a98b416 100644
+--- a/.trellis/spec/guides/index.md
++++ b/.trellis/spec/guides/index.md
+@@ -24,6 +24,7 @@ These guides help you **ask the right questions before coding**.
+ | [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | When you notice repeated patterns |
+ | [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
+ | [Cross-Platform Thinking Guide](./cross-platform-thinking-guide.md) | Catch platform-specific assumptions | Scripts, paths, commands |
++| [Metrics 采集规范](./metrics.md) | AI 关键节点自动记录量化指标 | trellis-check 后，session 结束前，PR 创建/merge 后 |
+ 
+ ---
+ 
+diff --git a/.trellis/spec/guides/metrics.md b/.trellis/spec/guides/metrics.md
+new file mode 100644
+index 0000000..bfd94fe
+--- /dev/null
++++ b/.trellis/spec/guides/metrics.md
+@@ -0,0 +1,103 @@
++# Metrics 采集规范
++
++> **目的**: 确保 AI 在关键节点自动记录量化指标，团队可汇总分析 token 节省率、任务效率、review 质量。
++
++---
++
++## 核心原则
++
++每个 AI session 必须在以下关键节点调用 `metrics.py log` 记录事件。这些数据写入月度 JSONL，由 `metrics.py report` 汇总。
++
++---
++
++## 必须记录的事件
++
++### 1. trellis-check 完成后
++
++每次 `trellis-check` 子代理完成检查后，**必须**调用：
++
++```bash
++# 检查通过
++python3 .trellis/scripts/metrics.py log check --pass --issues 0
++
++# 检查发现问题
++python3 .trellis/scripts/metrics.py log check --fail --issues N
++```
++
++- `--pass` / `--fail` 二选一
++- `--issues N` 为发现的问题数
++- 如果 check 发现问题的次数为 0，`--issues 0`
++
++### 2. Session 结束前
++
++执行 `/trellis:finish-work` 或 session 结束前，**必须**调用：
++
++```bash
++python3 .trellis/scripts/metrics.py log session-end \
++  --files-changed N   \
++  --lines-added N     \
++  --lines-removed N
++```
++
++- `--files-changed N` 本次 session 变更的文件数
++- `--lines-added N` 新增行数
++- `--lines-removed N` 删除行数
++- 数据可从 `git diff --stat` 获取
++
++### 3. PR 创建后
++
++提交 PR 后，**必须**调用：
++
++```bash
++python3 .trellis/scripts/metrics.py log pr-create --pr N
++```
++
++- `--pr N` PR 编号
++
++### 4. PR merge 后
++
++PR 被合并后，**必须**调用：
++
++```bash
++python3 .trellis/scripts/metrics.py log pr-merge --pr N --review-comments N
++```
++
++- `--pr N` PR 编号
++- `--review-comments N` review 评论数（0 表示一次通过）
++
++**注意**: `--review-comments` 在 JSONL 中会存储为 `review_comments`（连字符自动转下划线），`report` 命令基于 `review_comments` 字段计算一次通过率。
++
++---
++
++## 事件类型摘要
++
++| 事件 | 触发时机 | 必需参数 |
++|------|---------|---------|
++| `check` | trellis-check 完成后 | `--pass`/`--fail`, `--issues N` |
++| `session-end` | session 结束前 | `--files-changed N`, `--lines-added N`, `--lines-removed N` |
++| `pr-create` | PR 创建后 | `--pr N` |
++| `pr-merge` | PR merge 后 | `--pr N`, `--review-comments N` |
++
++---
++
++## 报告查看
++
++```bash
++# 查看当月报告
++python3 .trellis/scripts/metrics.py report
++
++# 查看指定月份
++python3 .trellis/scripts/metrics.py report --month 2026-04
++
++# 查看指定开发者
++python3 .trellis/scripts/metrics.py report --dev beilo
++```
++
++---
++
++## 注意事项
++
++1. 所有 `metrics.py log` 调用自动附加时间戳和开发者名
++2. Task 生命周期事件（create/start/finish/archive）由 hook 自动记录，无需手动调用
++3. JSONL 文件位于 `.trellis/workspace/{dev}/metrics-{YYYY-MM}.jsonl`
++4. `report` 输出含中文，便于团队阅读
+diff --git a/.trellis/spec/guides/index.md b/.trellis/spec/guides/index.md
+index a98b416..ec7270f 100644
+--- a/.trellis/spec/guides/index.md
++++ b/.trellis/spec/guides/index.md
+@@ -101,4 +101,14 @@ Found a new "didn't think of that" moment? Add it to the relevant guide.
+ 
+ ---
+ 
++## 全局规则（机器级）
++
++跨项目通用的机器级规则存放在 `~/.trellis/spec/`，结构与项目 spec 相同（`guides/`、`backend/`、`frontend/` 等层）。
++
++- 开始编码前，**先读取 `~/.trellis/spec/` 下与当前任务相关的 index.md 和指南文件**。
++- 全局规则与项目级规则冲突时，**项目级优先**——项目 spec 描述的是真实代码事实，全局 spec 是通用基线。
++- 全局规则只包含跨项目通用的工程纪律（修改前搜索、最小改动、验证记录等），不包含项目特有的 API 契约、业务流程或框架版本。
++
++---
++
+ **Core Principle**: 30 minutes of thinking saves 3 hours of debugging.
