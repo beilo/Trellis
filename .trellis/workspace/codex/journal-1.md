@@ -105,3 +105,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: 同步 Cursor agent 模板 — description 单行化 + research 加 model
+
+**Date**: 2026-05-06
+**Task**: 同步 Cursor agent 模板 — description 单行化 + research 加 model
+**Branch**: `custom/beilo-v0.5-rc`
+
+### Summary
+
+将 .cursor/agents 的 diff 改动回写到 src/dist 模板：trellis-check/implement description 单行化，trellis-research 加 model 字段 + description 单行化
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7b969cb` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
