@@ -1,1 +1,5 @@
 {"ts": "2026-05-04T02:14:22.465178+00:00", "event": "task.archive", "task": "metrics-log"}
+{"ts": "2026-05-05T15:16:52.278780+00:00", "event": "task.create", "task": "add-cursor-mcp-json", "title": "add-cursor-mcp-json"}
+{"ts": "2026-05-05T15:16:56.168229+00:00", "event": "task.start", "task": "add-cursor-mcp-json"}
+{"ts": "2026-05-05T15:24:23.863240+00:00", "event": "task.start", "task": "add-cursor-mcp-json"}
+{"ts": "2026-05-06T00:48:34.245124+00:00", "event": "task.archive", "task": "add-cursor-mcp-json"}
