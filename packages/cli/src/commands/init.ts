@@ -1632,6 +1632,11 @@ export async function init(options: InitOptions): Promise<void> {
     logPythonAdaptationNotice(pythonCmd);
   }
 
+  // Deploy global spec to ~/.trellis/spec/
+  const { deployGlobalSpec } = await import("../configurators/global-spec.js");
+  await deployGlobalSpec();
+  console.log(chalk.blue("🌐 Global spec deployed to ~/.trellis/spec/"));
+
   // Create root files (skip if exists)
   await createRootFiles(cwd);
 

@@ -2285,6 +2285,28 @@ export async function update(options: UpdateOptions): Promise<void> {
     console.log(`  Backup: ${path.relative(cwd, backupDir)}/`);
   }
 
+  // Sync global spec to ~/.trellis/spec/
+  const { syncGlobalSpec } = await import("../configurators/global-spec.js");
+  const globalSpecResult = await syncGlobalSpec();
+  if (
+    globalSpecResult.created.length > 0 ||
+    globalSpecResult.skipped.length > 0
+  ) {
+    console.log(chalk.cyan("\n🌐 Global spec (~/.trellis/spec/):"));
+    if (globalSpecResult.created.length > 0) {
+      console.log(
+        chalk.gray(`  Created: ${globalSpecResult.created.length} file(s)`),
+      );
+    }
+    if (globalSpecResult.skipped.length > 0) {
+      console.log(
+        chalk.yellow(
+          `  Skipped (user modified): ${globalSpecResult.skipped.length} file(s)`,
+        ),
+      );
+    }
+  }
+
   const actionWord = isDowngrade ? "Downgrade" : "Update";
   console.log(
     chalk.green(
