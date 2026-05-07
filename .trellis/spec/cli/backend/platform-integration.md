@@ -536,6 +536,7 @@ Add or update tests that assert:
 - `init({ <flag>: true })` creates platform assets and tracks hashes for all generated templates.
 - `get_context.py --mode phase --platform <platform>` routes to sub-agent-capable workflow blocks when `agentCapable` is true.
 - Runtime script copies (`src/templates/trellis/scripts/**` and live `.trellis/scripts/**`) both recognize the platform.
+- Cross-platform implement/check agent behavior changes are asserted across every agent-capable platform template, including platforms whose directory names differ from the generic `agents/` pattern (for example Droid uses `droids/`).
 
 ### 7. Wrong vs Correct
 

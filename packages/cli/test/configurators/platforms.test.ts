@@ -28,9 +28,11 @@ import {
 import {
   resolvePlaceholders,
   resolveAllAsSkills,
+  resolveAllAsSkillsNeutral,
   resolveBundledSkills,
   resolveCommands,
   resolveSkills,
+  resolveSkillsNeutral,
   wrapWithCommandFrontmatter,
   replacePythonCommandLiterals,
 } from "../../src/configurators/shared.js";
@@ -250,7 +252,7 @@ describe("configurePlatform", () => {
   it("configurePlatform('codex') writes shared skill templates from common source", async () => {
     await configurePlatform("codex", tmpDir);
 
-    const expected = resolveAllAsSkills(AI_TOOLS.codex.templateContext);
+    const expected = resolveAllAsSkillsNeutral(AI_TOOLS.codex.templateContext);
     const skillsRoot = path.join(tmpDir, ".agents", "skills");
     const actualNames = fs
       .readdirSync(skillsRoot, { withFileTypes: true })
@@ -380,13 +382,13 @@ describe("configurePlatform", () => {
     );
 
     // Skills as SKILL.md
-    const skillsDir = path.join(tmpDir, ".gemini", "skills");
+    const skillsDir = path.join(tmpDir, ".agents", "skills");
     expect(fs.existsSync(skillsDir)).toBe(true);
     const skillDirs = fs
       .readdirSync(skillsDir, { withFileTypes: true })
       .filter((e) => e.isDirectory());
     expect(skillDirs.length).toBe(
-      resolveSkills(AI_TOOLS.gemini.templateContext).length +
+      resolveSkillsNeutral(AI_TOOLS.gemini.templateContext).length +
         resolveBundledSkills(AI_TOOLS.gemini.templateContext).filter((file) =>
           file.relativePath.endsWith("/SKILL.md"),
         ).length,

@@ -10,7 +10,7 @@ import {
 import { ensureDir, writeFile } from "../utils/file-writer.js";
 import {
   resolvePlaceholders,
-  resolveAllAsSkills,
+  resolveAllAsSkillsNeutral,
   resolveBundledSkills,
   applyPullBasedPreludeToml,
   writeSkills,
@@ -29,7 +29,7 @@ export async function configureCodex(cwd: string): Promise<void> {
   const sharedSkillsRoot = path.join(cwd, ".agents", "skills");
   await writeSkills(
     sharedSkillsRoot,
-    resolveAllAsSkills(AI_TOOLS.codex.templateContext),
+    resolveAllAsSkillsNeutral(AI_TOOLS.codex.templateContext),
     resolveBundledSkills(AI_TOOLS.codex.templateContext),
   );
 

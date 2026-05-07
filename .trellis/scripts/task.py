@@ -90,20 +90,35 @@ def cmd_start(args: argparse.Namespace) -> int:
     except ValueError:
         task_dir = str(full_path)
 
+    task_json_path = full_path / FILE_TASK_JSON
+
     if not resolve_context_key():
-        print(colored("Error: Cannot set active task without a session identity.", Colors.RED))
-        print(
+        # 中文注释：无会话身份时进入降级模式，只跳过会话指针写入，仍允许任务推进到执行阶段。
+        print(colored(
+            "ℹ Session identity not available; active-task pointer not persisted "
+            "this session (degraded mode). AI continues based on conversation context.",
+            Colors.YELLOW,
+        ))
+        print(colored(
             "Hint: run inside an AI IDE/session that exposes session identity, "
-            "or set TRELLIS_CONTEXT_ID before running task.py start."
-        )
-        return 1
+            "or set TRELLIS_CONTEXT_ID before running task.py start.",
+            Colors.YELLOW,
+        ))
+
+        if task_json_path.is_file():
+            data = read_json(task_json_path)
+            if data and data.get("status") == "planning":
+                data["status"] = "in_progress"
+                if write_json(task_json_path, data):
+                    print(colored("✓ Status: planning → in_progress (degraded)", Colors.GREEN))
+            run_task_hooks("after_start", task_json_path, repo_root)
+        return 0
 
     active = set_active_task(task_dir, repo_root)
     if active:
         print(colored(f"✓ Current task set to: {task_dir}", Colors.GREEN))
         print(f"Source: {active.source}")
 
-        task_json_path = full_path / FILE_TASK_JSON
         if task_json_path.is_file():
             data = read_json(task_json_path)
             if data and data.get("status") == "planning":

@@ -63,19 +63,43 @@ export function isSupportedPythonVersion(versionOutput: string): boolean {
   );
 }
 
-function detectPythonVersion(command: string): string | null {
+// 中文注释：沙箱阻止 spawn 时不能误判为未安装 Python，返回哨兵让调用方降级处理。
+type PythonProbe = string | null | "sandbox-restricted";
+
+function detectPythonVersion(command: string): PythonProbe {
   try {
     return execSync(`${command} --version`, {
       encoding: "utf-8",
       stdio: "pipe",
     }).trim();
-  } catch {
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (code === "EPERM" || code === "EACCES") {
+      return "sandbox-restricted";
+    }
     return null;
   }
 }
 
 export function requireSupportedPython(command: string): string {
+  if (process.env.TRELLIS_SKIP_PYTHON_CHECK === "1") {
+    return "version check skipped (TRELLIS_SKIP_PYTHON_CHECK=1)";
+  }
+
   const versionOutput = detectPythonVersion(command);
+
+  if (versionOutput === "sandbox-restricted") {
+    console.warn(
+      chalk.yellow(
+        `⚠ Python version check skipped — sandboxed environment blocked ` +
+          `child_process spawn (EPERM/EACCES). Assuming "${command}" is on ` +
+          `PATH. If init fails later, re-run on the host or set ` +
+          `TRELLIS_SKIP_PYTHON_CHECK=1.`,
+      ),
+    );
+    return "version unknown (sandbox-restricted)";
+  }
+
   if (!versionOutput) {
     throw new Error(
       `Python command "${command}" not found. Trellis init requires Python ≥ 3.9.`,

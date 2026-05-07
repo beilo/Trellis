@@ -123,7 +123,7 @@ describe("UserPromptSubmit hook wiring", () => {
     {
       platform: "gemini",
       path: "gemini/settings.json",
-      event: "UserPromptSubmit",
+      event: "BeforeAgent",
     },
     {
       platform: "copilot",

@@ -1006,31 +1006,23 @@ describe("regression: current-task path normalization", () => {
     return content ?? "";
   }
 
-  it("[session-current-task] task.py start without context key fails without creating .current-task", () => {
+  it("[session-current-task] task.py start without context key enters degraded mode (returns 0, no pointer)", () => {
+    // 中文注释：0.5.3 起无 session 身份时不再中断流程，只跳过 active-task 指针持久化。
     setupTaskRepo();
     const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
 
-    let output = "";
-    let status = 0;
-    try {
-      execSync(
-        `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".trellis\\\\tasks\\\\issue-106")}`,
-        {
-          cwd: tmpDir,
-          encoding: "utf-8",
-          env: sessionEnv(),
-        },
-      );
-    } catch (error) {
-      status =
-        typeof (error as { status?: unknown }).status === "number"
-          ? ((error as { status: number }).status)
-          : 1;
-      output = String((error as { stdout?: unknown }).stdout ?? "");
-    }
+    const output = execSync(
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".trellis\\\\tasks\\\\issue-106")}`,
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env: sessionEnv(),
+      },
+    );
 
-    expect(status).toBe(1);
-    expect(output).toContain("Cannot set active task without a session identity");
+    expect(output).toContain("Session identity not available");
+    expect(output).toContain("degraded");
+    expect(output).toContain("conversation context");
     expect(output).toContain("TRELLIS_CONTEXT_ID");
     expect(
       fs.existsSync(path.join(tmpDir, ".trellis", ".current-task")),
@@ -1038,6 +1030,47 @@ describe("regression: current-task path normalization", () => {
     expect(
       fs.existsSync(path.join(tmpDir, ".trellis", ".runtime")),
     ).toBe(false);
+
+    const taskJsonPath = path.join(
+      tmpDir,
+      ".trellis",
+      "tasks",
+      "issue-106",
+      "task.json",
+    );
+    const taskJson = JSON.parse(fs.readFileSync(taskJsonPath, "utf-8")) as {
+      status?: string;
+    };
+    expect(taskJson.status).toBe("in_progress");
+  });
+
+  it("[session-current-task] task.py start in degraded mode flips planning → in_progress", () => {
+    // 中文注释：降级模式仍需推进 planning 任务，避免无 session 指针环境卡在规划阶段。
+    setupTaskRepo();
+    const taskJsonPath = path.join(
+      tmpDir,
+      ".trellis",
+      "tasks",
+      "issue-106",
+      "task.json",
+    );
+    const taskJson = JSON.parse(fs.readFileSync(taskJsonPath, "utf-8")) as {
+      status?: string;
+    };
+    taskJson.status = "planning";
+    fs.writeFileSync(taskJsonPath, JSON.stringify(taskJson, null, 2), "utf-8");
+
+    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const output = execSync(
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} start ${JSON.stringify(".trellis\\\\tasks\\\\issue-106")}`,
+      { cwd: tmpDir, encoding: "utf-8", env: sessionEnv() },
+    );
+
+    expect(output).toContain("planning → in_progress");
+    const after = JSON.parse(fs.readFileSync(taskJsonPath, "utf-8")) as {
+      status?: string;
+    };
+    expect(after.status).toBe("in_progress");
   });
 
   it("[session-current-task] task.py start writes session runtime state when TRELLIS_CONTEXT_ID is set", () => {
@@ -3953,6 +3986,46 @@ describe("regression: class-2 platforms use pull-based sub-agent context", () =>
           }
         }
       });
+    });
+  }
+});
+
+describe("regression: implement/check agents guard against recursive dispatch", () => {
+  const repoRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../..",
+  );
+
+  const agentFiles = [
+    "packages/cli/src/templates/claude/agents/trellis-implement.md",
+    "packages/cli/src/templates/claude/agents/trellis-check.md",
+    "packages/cli/src/templates/codebuddy/agents/trellis-implement.md",
+    "packages/cli/src/templates/codebuddy/agents/trellis-check.md",
+    "packages/cli/src/templates/cursor/agents/trellis-implement.md",
+    "packages/cli/src/templates/cursor/agents/trellis-check.md",
+    "packages/cli/src/templates/droid/droids/trellis-implement.md",
+    "packages/cli/src/templates/droid/droids/trellis-check.md",
+    "packages/cli/src/templates/gemini/agents/trellis-implement.md",
+    "packages/cli/src/templates/gemini/agents/trellis-check.md",
+    "packages/cli/src/templates/kiro/agents/trellis-implement.json",
+    "packages/cli/src/templates/kiro/agents/trellis-check.json",
+    "packages/cli/src/templates/opencode/agents/trellis-implement.md",
+    "packages/cli/src/templates/opencode/agents/trellis-check.md",
+    "packages/cli/src/templates/pi/agents/trellis-implement.md",
+    "packages/cli/src/templates/pi/agents/trellis-check.md",
+    "packages/cli/src/templates/qoder/agents/trellis-implement.md",
+    "packages/cli/src/templates/qoder/agents/trellis-check.md",
+    "packages/cli/src/templates/codex/agents/trellis-implement.toml",
+    "packages/cli/src/templates/codex/agents/trellis-check.toml",
+  ];
+
+  for (const rel of agentFiles) {
+    it(`[${rel}] tells dispatched sub-agent not to spawn implement/check again`, () => {
+      const content = fs.readFileSync(path.join(repoRoot, rel), "utf-8");
+      expect(content).toContain("already");
+      expect(content).toContain("trellis-implement");
+      expect(content).toContain("trellis-check");
+      expect(content).toMatch(/Do NOT spawn another|MUST NOT spawn another/);
     });
   }
 });

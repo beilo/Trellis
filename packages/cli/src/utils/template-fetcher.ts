@@ -668,7 +668,8 @@ function classifyGitError(
       lower.includes("could not find remote ref") ||
       lower.includes("invalid reference") ||
       lower.includes("reference is not a tree") ||
-      lower.includes("pathspec"))
+      lower.includes("pathspec") ||
+      text.includes("无法找到远程引用"))
   ) {
     return new RegistryBackendError(
       "ref-not-found",

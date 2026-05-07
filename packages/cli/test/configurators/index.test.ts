@@ -307,7 +307,7 @@ describe("collectPlatformTemplates", () => {
     codex: ".agents/skills",
     kilo: ".kilocode/skills",
     kiro: ".kiro/skills",
-    gemini: ".gemini/skills",
+    gemini: ".agents/skills",
     antigravity: ".agent/skills",
     windsurf: ".windsurf/skills",
     qoder: ".qoder/skills",

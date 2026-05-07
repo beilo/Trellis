@@ -38,9 +38,11 @@ import {
   replacePythonCommandLiterals,
   resolvePlaceholders,
   resolveAllAsSkills,
+  resolveAllAsSkillsNeutral,
   resolveBundledSkills,
   resolveCommands,
   resolveSkills,
+  resolveSkillsNeutral,
   wrapWithCommandFrontmatter,
   collectSkillTemplates,
   applyPullBasedPreludeMarkdown,
@@ -213,7 +215,7 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       const ctx = AI_TOOLS.codex.templateContext;
       for (const [filePath, content] of collectSkillTemplates(
         ".agents/skills",
-        resolveAllAsSkills(ctx),
+        resolveAllAsSkillsNeutral(ctx),
         resolveBundledSkills(ctx),
       )) {
         files.set(filePath, content);
@@ -283,8 +285,8 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
         files.set(`.gemini/commands/trellis/${cmd.name}.toml`, toml);
       }
       for (const [filePath, content] of collectSkillTemplates(
-        ".gemini/skills",
-        resolveSkills(ctx),
+        ".agents/skills",
+        resolveSkillsNeutral(ctx),
         resolveBundledSkills(ctx),
       )) {
         files.set(filePath, content);

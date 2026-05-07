@@ -559,7 +559,11 @@ function needsCodexUpgrade(cwd: string): boolean {
   }
 
   const hashes = loadHashes(cwd);
-  return Object.keys(hashes).some((key) => key.startsWith(".agents/skills/"));
+  const keys = Object.keys(hashes);
+  return (
+    keys.some((key) => key === ".agents/skills/trellis-continue/SKILL.md") ||
+    keys.some((key) => key === ".agents/skills/trellis-finish-work/SKILL.md")
+  );
 }
 
 function preserveExistingClaudeStatusLine(
