@@ -138,3 +138,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 5: 同步 0.5.4 功能
+
+**Date**: 2026-05-07
+**Task**: 同步 0.5.4 功能
+**Branch**: `custom/beilo-v0.5-rc`
+
+### Summary
+
+手工移植上游 0.5.0 GA 到 0.5.4 的修复和 manifest，保留本地 Cursor codebase-search、global spec、install/update 等定制，并通过 lint/typecheck/test。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4ec8b27` | (see git log) |
+| `92917d9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 4
-- **Last Active**: 2026-05-06
+- **Total Sessions**: 5
+- **Last Active**: 2026-05-07
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~140 | Active |
+| `journal-1.md` | ~174 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 5 | 2026-05-07 | 同步 0.5.4 功能 | `4ec8b27`, `92917d9` | `custom/beilo-v0.5-rc` |
 | 4 | 2026-05-06 | 同步 Cursor agent 模板 — description 单行化 + research 加 model | `7b969cb` | `custom/beilo-v0.5-rc` |
 | 3 | 2026-05-06 | 全局 spec 部署：trellis init/update 自动部署 ~/.trellis/spec/ | `e64fe2c` | `custom/beilo-v0.5-rc` |
 | 2 | 2026-05-06 | 添加 Cursor MCP 服务器模板 | `967c9f0`, `a68cbc7` | `custom/beilo-v0.5-rc` |

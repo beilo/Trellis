@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/cli/backend/index.md", "reason": "CLI backend guideline index for release sync"}
+{"file": ".trellis/spec/cli/backend/migrations.md", "reason": "Release manifest and migration contract"}
+{"file": ".trellis/spec/cli/backend/platform-integration.md", "reason": "Platform template/configurator sync rules"}
+{"file": ".trellis/spec/cli/backend/workflow-state-contract.md", "reason": "Workflow-state breadcrumb and sub-agent dispatch contract"}
+{"file": ".trellis/spec/cli/backend/quality-guidelines.md", "reason": "TypeScript quality rules"}
+{"file": ".trellis/spec/cli/unit-test/index.md", "reason": "Unit test guideline index"}
+{"file": ".trellis/spec/cli/unit-test/conventions.md", "reason": "Regression test conventions"}
+{"file": ".trellis/tasks/05-07-sync-0-5-4-features/research/sync-0-5-conflict-plan.md", "reason": "Conflict plan and manual sync strategy"}
