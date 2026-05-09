@@ -3,7 +3,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { getAllAgents } from "../../src/templates/cursor/index.js";
+import { collectPlatformTemplates } from "../../src/configurators/index.js";
+import {
+  getAllAgents,
+  getMcpConfig,
+  getRules,
+} from "../../src/templates/cursor/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../../..");
@@ -21,6 +26,33 @@ describe("cursor getAllAgents", () => {
     const agents = getAllAgents();
     const names = agents.map((a) => a.name).sort();
     expect(names).toEqual(EXPECTED_AGENT_NAMES);
+  });
+});
+
+describe("cursor local MCP and rules templates", () => {
+  it("keeps the codebase-search rule and MCP server template", () => {
+    // 中文注释：Cursor 的 MCP/rules 是本地 fork 定制，必须和 agent 一起保留。
+    const rules = getRules();
+    expect(rules.map((rule) => rule.name)).toContain("codebase-search");
+    expect(rules.find((rule) => rule.name === "codebase-search")?.content).toContain(
+      "codebase-search",
+    );
+
+    const mcp = getMcpConfig();
+    expect(mcp).toContain('"mcpServers"');
+    expect(mcp).toContain('"figma"');
+    expect(mcp).toContain('"exa"');
+    expect(mcp).toContain('"chrome-devtools"');
+  });
+
+  it("collectPlatformTemplates includes Cursor MCP and rules for update", () => {
+    // 中文注释：update 走 collectTemplates；只测源模板不够，必须覆盖写入路径。
+    const files = collectPlatformTemplates("cursor");
+    expect(files?.has(".cursor/mcp.json")).toBe(true);
+    expect(files?.has(".cursor/rules/codebase-search.mdc")).toBe(true);
+    expect(files?.get(".cursor/rules/codebase-search.mdc")).toContain(
+      "codebase-search",
+    );
   });
 });
 

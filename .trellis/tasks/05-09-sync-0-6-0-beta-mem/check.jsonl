@@ -1,0 +1,7 @@
+{"file":".trellis/tasks/05-09-sync-0-6-0-beta-mem/research/upstream-0-6-0-beta-summary.md","reason":"Acceptance criteria and sync boundaries to verify"}
+{"file":".trellis/tasks/05-09-sync-0-6-0-beta-mem/research/merge-conflict-plan.md","reason":"Verify conflict resolutions match the agreed merge policy"}
+{"file":".trellis/spec/cli/backend/index.md","reason":"CLI backend quality check instructions"}
+{"file":".trellis/spec/cli/backend/migrations.md","reason":"Verify release manifests and migration metadata"}
+{"file":".trellis/spec/cli/backend/quality-guidelines.md","reason":"Lint and TypeScript quality rules"}
+{"file":".trellis/spec/cli/unit-test/conventions.md","reason":"Validate test additions and command-level coverage"}
+{"file":".trellis/spec/guides/cross-platform-thinking-guide.md","reason":"Check platform-specific session-history assumptions"}

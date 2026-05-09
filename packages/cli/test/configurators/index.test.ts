@@ -307,6 +307,7 @@ describe("collectPlatformTemplates", () => {
     codex: ".agents/skills",
     kilo: ".kilocode/skills",
     kiro: ".kiro/skills",
+    // 中文注释：Gemini CLI 0.40+ 读取共享 `.agents/skills/`，避免和 Codex 生成重复 skill。
     gemini: ".agents/skills",
     antigravity: ".agent/skills",
     windsurf: ".windsurf/skills",

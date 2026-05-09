@@ -105,6 +105,7 @@ def cmd_start(args: argparse.Namespace) -> int:
             Colors.YELLOW,
         ))
 
+        # 中文注释：即使没有 session 指针，也要推进 task.json 状态，避免后续阶段卡在 planning。
         if task_json_path.is_file():
             data = read_json(task_json_path)
             if data and data.get("status") == "planning":

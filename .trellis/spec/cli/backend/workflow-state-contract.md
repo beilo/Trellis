@@ -9,12 +9,15 @@
 ## Overview
 
 The breadcrumb is the **only** per-turn channel that fires while a Trellis task
-is active. Sub-agents don't see it (class-1 hook injection rewrites sub-agent
-prompts via `inject-subagent-context`; class-2 sub-agents pull a static prelude
-that does not include workflow-state). Therefore: **every `[required · once]`
+is active. It is intended for the main AI session, while sub-agent context
+normally arrives through `inject-subagent-context` on class-1 platforms or a
+pull-based prelude on class-2 platforms. Host behavior can still surface the
+breadcrumb inside sub-agent turns, though, and hooks do not currently expose a
+stable main-vs-sub-agent identity signal. Therefore: **every `[required · once]`
 step that the workflow-walkthrough mandates for a given phase must also be
-mentioned in that phase's breadcrumb tag block.** If it isn't, the AI in
-the main session will silently skip it. Two production bugs (Phase 1.3 jsonl
+mentioned in that phase's breadcrumb tag block, and breadcrumb text must be
+safe when read by a sub-agent.** If required steps are absent, the AI in the
+main session will silently skip them. Two production bugs (Phase 1.3 jsonl
 curation skip, Phase 3.4 commit skip) hit exactly this failure mode.
 
 This document is the source of truth for the runtime mechanics. The user-facing
@@ -79,13 +82,28 @@ Both regexes MUST use the `\1` backreference variant — `[workflow-state:([A-Za
 
    ```json
    {"hookSpecificOutput": {
-     "hookEventName": "UserPromptSubmit",
+     "hookEventName": "<platform-event-name>",
      "additionalContext": "<workflow-state>...</workflow-state>"
    }}
    ```
 
    The platform host injects `additionalContext` as system-level preamble
    for that turn.
+
+   `hookEventName` MUST echo the host's per-turn event name or the host's
+   schema validator will reject the payload. The shared hook detects the
+   platform via `_detect_platform()` and emits the matching value:
+
+   | Detected platform | `hookEventName` value |
+   |---|---|
+   | gemini | `BeforeAgent` |
+   | all others (claude, cursor, codex, qoder, codebuddy, droid, copilot, kiro) | `UserPromptSubmit` |
+
+   When adding a new hook-capable platform whose per-turn event name is not
+   `UserPromptSubmit`, extend `_detect_platform()` and the `hook_event_name`
+   selector in `inject-workflow-state.py` (and the OpenCode `.js` plugin if
+   the new platform shares its `chat.message`-style envelope). Do NOT
+   hardcode `UserPromptSubmit` at any new emission site.
 
 ---
 
@@ -116,12 +134,12 @@ a new writer requires updating this spec.**
 | # | Writer | File:Line | Value | Trigger |
 |---|--------|-----------|-------|---------|
 | 1 | `cmd_create` | `packages/cli/src/templates/trellis/scripts/common/task_store.py:206` | `"planning"` | `task.py create "<title>"` (also auto-sets the session active-task pointer when session identity is available — see R7 in 04-30-workflow-state-commit-gap PRD) |
-| 2 | `cmd_start` | `packages/cli/src/templates/trellis/scripts/task.py:109-111` | `"in_progress"` (gated on prior `"planning"`) | `task.py start <dir>` |
-| 3 | `cmd_archive` | `packages/cli/src/templates/trellis/scripts/common/task_store.py:319-323` | `"completed"` (unconditional flip + archive `mv`) | `task.py archive <dir>` |
+| 2 | `cmd_start` | `packages/cli/src/templates/trellis/scripts/task.py:114-115, 128-129` | `"in_progress"` (gated on prior `"planning"`; both branches in `cmd_start`) | `task.py start <dir>` |
+| 3 | `cmd_archive` | `packages/cli/src/templates/trellis/scripts/common/task_store.py:337` | `"completed"` (unconditional flip + archive `mv`) | `task.py archive <dir>` |
 | 4 | `emptyTaskJson` factory | `packages/cli/src/utils/task-json.ts:54` | `"planning"` (default) | TS callers (init, update) |
-| 5 | `getBootstrapTaskJson` | `packages/cli/src/commands/init.ts:417` | `"in_progress"` (override) | `trellis init` (creator path) |
-| 6 | `getJoinerTaskJson` | `packages/cli/src/commands/init.ts:460` | `"in_progress"` (override) | `trellis init` (joiner path) |
-| 7 | migration-task literal | `packages/cli/src/commands/update.ts:2215-2226` | `"planning"` | `trellis update --migrate` for breaking-change manifest |
+| 5 | `getBootstrapTaskJson` | `packages/cli/src/commands/init.ts:535` | `"in_progress"` (override) | `trellis init` (creator path) |
+| 6 | `getJoinerTaskJson` | `packages/cli/src/commands/init.ts:587` | `"in_progress"` (override) | `trellis init` (joiner path) |
+| 7 | migration-task via `emptyTaskJson` | `packages/cli/src/commands/update.ts:2483-2494` | `"planning"` (override on factory) | `trellis update --migrate` for breaking-change manifest |
 
 **No other writer exists.** No hook script writes `task.json.status` — verified
 by `grep -rn '"status"' .trellis/scripts/`. Linear-sync hook (`linear_sync.py`)
@@ -186,24 +204,29 @@ Forks can define custom statuses. To do so:
 
 ## Hook reachability matrix
 
-The breadcrumb is **only visible to the main AI session.** Sub-agents have
-their own context loading paths.
+The breadcrumb is **intended** for the main AI session. Sub-agents have their
+own context loading paths, but host platforms may still run per-turn breadcrumb
+hooks for child turns or inherit main-session per-turn context. Trellis must not
+rely on categorical breadcrumb invisibility inside sub-agents.
 
-| Channel | Main session | Class-1 sub-agent (push hook) | Class-2 sub-agent (pull prelude) |
-|---------|:------------:|:-----------------------------:|:--------------------------------:|
-| `<workflow-state>` per-turn breadcrumb | ✅ | ❌ (sub-agents have their own UserPromptSubmit, but it does not inherit main-session breadcrumbs) | ❌ |
-| `inject-subagent-context` (`implement.jsonl`/`check.jsonl` injection) | ❌ | ✅ | ❌ |
-| Pull-based prelude (`shared.ts:buildPullBasedPrelude`) | N/A | N/A | ✅ |
+| Channel | Main session | Hook-inject sub-agent | Pull-prelude sub-agent | Extension-backed sub-agent |
+|---------|:------------:|:---------------------:|:----------------------:|:--------------------------:|
+| `<workflow-state>` per-turn breadcrumb | ✅ | ⚠️ possible host-dependent exposure | ⚠️ possible host-dependent exposure | ⚠️ possible host-dependent exposure |
+| `inject-subagent-context` (`implement.jsonl`/`check.jsonl` injection) | ❌ | ✅ | ❌ | ❌ |
+| Pull-based prelude (`shared.ts:buildPullBasedPrelude`) | N/A | N/A | ✅ | fallback |
 
-Class-1 platforms (push hooks): claude, cursor, codebuddy, droid, opencode (JS plugin), pi (TS extension).
-Class-2 platforms (pull prelude): codex, gemini, qoder, copilot.
+Hook-inject platforms: claude, cursor, codebuddy, droid, kiro (`agentSpawn`), opencode (JS plugin).
+Pull-prelude platforms: codex, gemini, qoder, copilot.
+Extension-backed platforms: pi.
 Hookless: kilo, antigravity, windsurf.
 
-**Implication**: any guidance the breadcrumb wants to give to sub-agents must
-either (a) be propagated through `inject-subagent-context` for class-1, or (b)
-be added to the `buildPullBasedPrelude` static text for class-2. The
-breadcrumb itself reaches **only** the main session driving the
-`Task` / `Agent` tool spawn.
+**Implication**: sub-agent-required guidance must still be propagated through
+`inject-subagent-context` for hook-inject platforms, `buildPullBasedPrelude` for
+pull-prelude platforms, or the Pi extension's prompt builder for
+extension-backed platforms. Breadcrumb text must additionally be safe if a
+sub-agent sees it: main-session dispatch guidance must self-exempt
+`trellis-implement` / `trellis-check` readers so they implement or check
+directly instead of spawning nested Trellis sub-agents.
 
 ---
 
@@ -227,8 +250,9 @@ breadcrumb itself reaches **only** the main session driving the
 - Don't silently re-route a writer to a different status without auditing
   every breadcrumb consumer (`session-start.py`, `inject-workflow-state.py`,
   `task.py list`, etc.).
-- Don't expect sub-agents to see the breadcrumb. If guidance is sub-agent
-  relevant, propagate it via the appropriate channel above.
+- Don't rely on sub-agents not seeing the breadcrumb. If guidance is sub-agent
+  relevant, propagate it via the appropriate channel above and keep the
+  breadcrumb wording self-exempting.
 
 ---
 

@@ -1,0 +1,10 @@
+{"file":".trellis/tasks/05-09-sync-0-6-0-beta-mem/research/upstream-0-6-0-beta-summary.md","reason":"Upstream release evidence, mem commit range, and local customization preservation boundaries"}
+{"file":".trellis/tasks/05-09-sync-0-6-0-beta-mem/research/merge-conflict-plan.md","reason":"Conflict files and resolution policy from dry-run merge probe"}
+{"file":".trellis/spec/cli/backend/index.md","reason":"CLI backend pre-development checklist and quality gate"}
+{"file":".trellis/spec/cli/backend/directory-structure.md","reason":"Command/configurator/template ownership and dogfooding paths"}
+{"file":".trellis/spec/cli/backend/migrations.md","reason":"Migration manifest expectations for new release versions"}
+{"file":".trellis/spec/cli/backend/quality-guidelines.md","reason":"TypeScript strictness and lint expectations"}
+{"file":".trellis/spec/cli/unit-test/conventions.md","reason":"Required test coverage for new command logic and update behavior"}
+{"file":".trellis/spec/guides/index.md","reason":"Shared thinking guide entry point"}
+{"file":".trellis/spec/guides/cross-platform-thinking-guide.md","reason":"Path, command, and platform compatibility for Claude Code, Codex, and OpenCode session readers"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Avoid duplicated template/script registration and preserve single source of truth"}

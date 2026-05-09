@@ -252,6 +252,7 @@ describe("configurePlatform", () => {
   it("configurePlatform('codex') writes shared skill templates from common source", async () => {
     await configurePlatform("codex", tmpDir);
 
+    // 中文注释：Codex 与 Gemini 共用 `.agents/skills/`，必须用中性渲染保持字节一致。
     const expected = resolveAllAsSkillsNeutral(AI_TOOLS.codex.templateContext);
     const skillsRoot = path.join(tmpDir, ".agents", "skills");
     const actualNames = fs
@@ -261,7 +262,11 @@ describe("configurePlatform", () => {
       .sort();
 
     expect(actualNames).toEqual(
-      [...expected.map((s) => s.name), BUNDLED_SKILL_NAME].sort(),
+      [
+        ...expected.map((s) => s.name),
+        BUNDLED_SKILL_NAME,
+        "trellis-start",
+      ].sort(),
     );
 
     for (const skill of expected) {
@@ -270,6 +275,9 @@ describe("configurePlatform", () => {
       expect(fs.readFileSync(skillPath, "utf-8")).toBe(skill.content);
     }
     expect(fs.existsSync(path.join(skillsRoot, BUNDLED_REFERENCE))).toBe(true);
+    expect(
+      fs.existsSync(path.join(skillsRoot, "trellis-start", "SKILL.md")),
+    ).toBe(true);
   });
 
   it("configurePlatform('codex') writes custom agents and config", async () => {
@@ -330,7 +338,7 @@ describe("configurePlatform", () => {
     const expectedPythonCmd =
       process.platform === "win32" ? "python" : "python3";
     expect(content).toContain(
-      `"command": "${expectedPythonCmd} .codex/hooks/session-start.py"`,
+      `"command": "${expectedPythonCmd} .codex/hooks/inject-workflow-state.py"`,
     );
     expect(content).not.toContain("{{PYTHON_CMD}}");
   });
@@ -381,7 +389,8 @@ describe("configurePlatform", () => {
       resolveCommands(AI_TOOLS.gemini.templateContext).length,
     );
 
-    // Skills as SKILL.md
+    // 中文注释：Gemini skills 写入共享根目录，不能再写 `.gemini/skills/` 造成重复告警。
+    expect(fs.existsSync(path.join(tmpDir, ".gemini", "skills"))).toBe(false);
     const skillsDir = path.join(tmpDir, ".agents", "skills");
     expect(fs.existsSync(skillsDir)).toBe(true);
     const skillDirs = fs
@@ -910,7 +919,7 @@ describe("configurePlatform", () => {
   it("codex hooks.json template keeps PYTHON_CMD placeholder", () => {
     const rawTemplate = getCodexHooksConfig();
     expect(rawTemplate).toContain(
-      "{{PYTHON_CMD}} .codex/hooks/session-start.py",
+      "{{PYTHON_CMD}} .codex/hooks/inject-workflow-state.py",
     );
   });
 

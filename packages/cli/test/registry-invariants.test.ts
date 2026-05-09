@@ -121,6 +121,9 @@ describe("UserPromptSubmit hook wiring", () => {
       event: "UserPromptSubmit",
     },
     {
+      // Gemini CLI 0.40+ renamed the per-turn event from `UserPromptSubmit`
+      // (Claude Code naming we initially copied) to `BeforeAgent`. The
+      // schema validator rejects the legacy name — see issue #224.
       platform: "gemini",
       path: "gemini/settings.json",
       event: "BeforeAgent",

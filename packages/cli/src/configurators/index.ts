@@ -40,6 +40,7 @@ import {
   resolveAllAsSkills,
   resolveAllAsSkillsNeutral,
   resolveBundledSkills,
+  resolveCodexTrellisStartSkill,
   resolveCommands,
   resolveSkills,
   resolveSkillsNeutral,
@@ -220,6 +221,16 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       )) {
         files.set(filePath, content);
       }
+      // Mirror configureCodex's extra trellis-start write so `trellis update`
+      // picks up the file (was missing pre-0.5.7 — upgrade path silently
+      // dropped the skill).
+      const trellisStart = resolveCodexTrellisStartSkill(ctx);
+      if (trellisStart) {
+        files.set(
+          `.agents/skills/${trellisStart.name}/SKILL.md`,
+          trellisStart.content,
+        );
+      }
       for (const skill of getCodexPlatformSkills()) {
         files.set(`.codex/skills/${skill.name}/SKILL.md`, skill.content);
       }
@@ -284,6 +295,9 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
         const toml = `description = "Trellis: ${cmd.name}"\n\nprompt = """\n${cmd.content}\n"""\n`;
         files.set(`.gemini/commands/trellis/${cmd.name}.toml`, toml);
       }
+      // Shared skills written to `.agents/skills/` (Gemini CLI 0.40+ workspace
+      // alias). Neutral resolver keeps content byte-identical to Codex's writes
+      // for the same skill names.
       for (const [filePath, content] of collectSkillTemplates(
         ".agents/skills",
         resolveSkillsNeutral(ctx),

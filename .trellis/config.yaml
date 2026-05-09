@@ -57,3 +57,14 @@ hooks:
 
 # Default package used when --package is not specified.
 # default_package: frontend
+
+
+#-------------------------------------------------------------------------------
+# Codex (dispatch behavior)
+#-------------------------------------------------------------------------------
+# Codex-only knob; other platforms ignore it. This project uses inline mode so
+# the main Codex agent edits code directly. Set to "sub-agent" to opt into the
+# legacy dispatch model.
+#
+codex:
+  dispatch_mode: inline  # or "sub-agent" to dispatch trellis-* sub-agents
