@@ -19,7 +19,10 @@
 
 ### Main Changes
 
-(Add details)
+- Merged upstream `v0.6.0-beta.3` into `custom/beilo-v0.5-rc`.
+- Added `trellis mem` command, platform readers, extraction/context flows, tests, migration manifests, and backend spec.
+- Preserved local fork customizations for install/update scripts, Cursor codebase-search/MCP/rules, global-spec, and metrics.
+- Archived `.trellis/tasks/05-09-sync-0-6-0-beta-mem`.
 
 ### Git Commits
 
@@ -29,7 +32,12 @@
 
 ### Testing
 
-- [OK] (Add test results)
+- [OK] `pnpm lint`
+- [OK] `pnpm typecheck`
+- [OK] `pnpm test` (35 files / 1111 tests)
+- [OK] `pnpm build`
+- [OK] `node packages/cli/dist/cli/index.js mem --help`
+- [OK] `git diff --cached --check && git diff --check`
 
 ### Status
 
@@ -160,6 +168,39 @@
 |------|---------|
 | `4ec8b27` | (see git log) |
 | `92917d9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 6: 同步 0.6.0 beta trellis mem
+
+**Date**: 2026-05-09
+**Task**: 同步 0.6.0 beta trellis mem
+**Branch**: `custom/beilo-v0.5-rc`
+
+### Summary
+
+Merged upstream v0.6.0-beta.3 into custom/beilo-v0.5-rc, added trellis mem command/tests/manifests/specs, preserved local fork customizations, and verified lint/typecheck/test/build/smoke.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `512978c` | (see git log) |
 
 ### Testing
 
