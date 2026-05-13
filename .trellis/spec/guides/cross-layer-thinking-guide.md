@@ -9,6 +9,7 @@
 **Most bugs happen at layer boundaries**, not within layers.
 
 Common cross-layer bugs:
+
 - API returns format A, frontend expects format B
 - Database stores X, service transforms to Y, but loses data
 - Multiple layers implement the same logic differently
@@ -26,22 +27,24 @@ Source → Transform → Store → Retrieve → Transform → Display
 ```
 
 For each arrow, ask:
+
 - What format is the data in?
 - What could go wrong?
 - Who is responsible for validation?
 
 ### Step 2: Identify Boundaries
 
-| Boundary | Common Issues |
-|----------|---------------|
-| API ↔ Service | Type mismatches, missing fields |
-| Service ↔ Database | Format conversions, null handling |
-| Backend ↔ Frontend | Serialization, date formats |
-| Component ↔ Component | Props shape changes |
+| Boundary              | Common Issues                     |
+| --------------------- | --------------------------------- |
+| API ↔ Service         | Type mismatches, missing fields   |
+| Service ↔ Database    | Format conversions, null handling |
+| Backend ↔ Frontend    | Serialization, date formats       |
+| Component ↔ Component | Props shape changes               |
 
 ### Step 3: Define Contracts
 
 For each boundary:
+
 - What is the exact input format?
 - What is the exact output format?
 - What errors can occur?
@@ -73,12 +76,14 @@ For each boundary:
 ## Checklist for Cross-Layer Features
 
 Before implementation:
+
 - [ ] Mapped the complete data flow
 - [ ] Identified all layer boundaries
 - [ ] Defined format at each boundary
 - [ ] Decided where validation happens
 
 After implementation:
+
 - [ ] Tested with edge cases (null, empty, invalid)
 - [ ] Verified error handling at each boundary
 - [ ] Checked data survives round-trip
@@ -100,11 +105,68 @@ In Trellis, command templates (e.g., `record-session.md`) exist in **multiple pl
 
 ---
 
+## Generated Runtime Template Upgrade Consistency
+
+Some generated files are both documentation and runtime input. In Trellis,
+`.trellis/workflow.md` is parsed by `get_context.py`, `workflow_phase.py`,
+SessionStart filters, and per-turn hooks. Template changes must be validated
+against both fresh init and upgrade paths.
+
+### Checklist: After Modifying A Runtime-Parsed Template
+
+- [ ] Identify every runtime parser that reads the template, not just the file
+      writer that installs it
+- [ ] Check whether relevant syntax lives outside obvious managed regions
+      such as tag blocks
+- [ ] Verify fresh `init` output and a versioned `update` scenario that writes
+      the older `.trellis/.version`
+- [ ] Add an upgrade regression using an older pristine template fixture, then
+      assert the installed file reaches the current packaged shape
+- [ ] Update the backend spec that owns the runtime contract
+
+---
+
+## Versioned Documentation Boundary
+
+Versioned documentation is a cross-layer boundary: source paths, `docs.json`
+version routing, and the rendered version selector must all describe the same
+release line.
+
+### Checklist: Before Editing Versioned Docs
+
+- [ ] Identify the target release line: stable, beta, or RC
+- [ ] Verify the edited MDX path matches that line:
+  - stable: `docs-site/{start,advanced,...}` and `docs-site/zh/{start,advanced,...}`
+  - beta: `docs-site/beta/**` and `docs-site/zh/beta/**`
+  - RC: `docs-site/rc/**` and `docs-site/zh/rc/**`
+- [ ] Verify `docs.json` navigation points the version label to the same paths
+- [ ] Grep the opposite tree for release-line-specific terms before committing
+- [ ] Treat beta content appearing under root release paths as a source-path bug,
+      not a rendering bug
+
+**Real-world example**: A beta-only task workflow change documented
+`prd.md` + `design.md` + `implement.md`, task-creation consent, and Codex
+mode banners under root `start/` and `advanced/` paths. The docs site then
+served 0.6 beta behavior under the Release selector. The fix was to restore root
+release docs, move the 0.6 content to `beta/` and `zh/beta/`, and add a grep
+audit for beta markers against the root release tree.
+
+**Real-world example**: Codex inline mode changed workflow platform markers from
+`[Codex]` / `[Kilo, Antigravity, Windsurf]` to `[codex-sub-agent]` /
+`[codex-inline, Kilo, Antigravity, Windsurf]`. Fresh init was correct, but
+`trellis update` only merged `[workflow-state:*]` blocks and preserved stale
+markers outside those blocks. Result: upgraded projects got new hook scripts
+but old workflow routing, so `get_context.py --mode phase --platform codex`
+could return empty Phase 2.1 detail.
+
+---
+
 ## Mode-Detection Probe Checklist
 
 When a CLI auto-detects a mode by probing a remote resource (e.g., checking if `index.json` exists to decide marketplace vs direct download):
 
 ### Before implementing:
+
 - [ ] Probe runs in **ALL** code paths that use the result (interactive, `-y`, `--flag` combos)
 - [ ] 404 vs transient error are distinguished — don't treat both as "not found"
 - [ ] Transient errors **abort or retry**, never silently switch modes
@@ -112,18 +174,23 @@ When a CLI auto-detects a mode by probing a remote resource (e.g., checking if `
 - [ ] **Shortcut paths** (e.g., `--template` skipping picker) must have the same error-handling quality as the probed path — check that downstream functions don't call catch-all wrappers
 
 ### After implementing:
+
 - [ ] Trace every path from probe result to the mode-decision branch — no fallthrough
 - [ ] External format contracts (giget URI, raw URLs) are tested or at least documented as comments
+- [ ] Metadata reads consume a complete response or use a streaming parser — never parse a fixed-size prefix as full JSON
 - [ ] When reconstructing a composite identifier from parsed parts, verify **all** fields are included and in the **correct position** (e.g., `provider:repo/path#ref` not `provider:repo#ref/path`)
 - [ ] Verify that **action functions** called after a shortcut don't internally use the old catch-all fetch — they must use the probe-quality variant when error distinction matters
 
 **Real-world example**: Custom registry flow had 8 bugs across 3 review rounds: (1) probe only ran in interactive mode, (2) transient errors fell through to wrong mode, (3) giget URI had `#ref` in wrong position, (4) prefetched templates leaked across source switches, (5) `--template` shortcut bypassed probe but `downloadTemplateById` internally used catch-all `fetchTemplateIndex`, turning timeouts into "Template not found".
+
+**Real-world example**: Agent-session update hints fetched npm `latest` metadata with `response.read(4096)` and then parsed it as complete JSON. The `@mindfoldhq/trellis` package metadata exceeded 4 KB, so the JSON was truncated, parse failed silently, and the first session injection showed no update hint. Fix: read the complete response before parsing, and add a regression where `version` is followed by an 8 KB metadata tail.
 
 ---
 
 ## When to Create Flow Documentation
 
 Create detailed flow docs when:
+
 - Feature spans 3+ layers
 - Multiple teams are involved
 - Data format is complex

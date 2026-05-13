@@ -215,19 +215,25 @@ home = Path.home()
 ```
 
 **Rule 2**: When injecting environment variables into shell commands, generate
-the prefix for the actual host shell. Do not assume `export` works everywhere.
-AI tool "Bash" surfaces on Windows may execute through PowerShell.
+the prefix for the actual shell that will parse the command. Do not choose
+syntax from OS alone. AI tool "Bash" surfaces on Windows may execute through
+PowerShell, Git Bash, MSYS2, or another POSIX-like shell.
 
 ```javascript
 // BAD - breaks when the host shell is PowerShell
 command = `export TRELLIS_CONTEXT_ID=${shellQuote(contextKey)}; ${command}`;
 
-// GOOD - shell-aware command prefix
-const prefix = process.platform === "win32"
+// GOOD - shell-dialect-aware command prefix
+const prefix = process.platform === "win32" && !isWindowsPosixShell(process.env)
   ? `$env:TRELLIS_CONTEXT_ID = ${powershellQuote(contextKey)}; `
   : `export TRELLIS_CONTEXT_ID=${shellQuote(contextKey)}; `;
 command = `${prefix}${command}`;
 ```
+
+On Windows, treat `MSYSTEM`, `MINGW_PREFIX`, `OSTYPE=msys|mingw|cygwin`,
+`SHELL=...bash`, or a platform-specific Git Bash setting as POSIX-shell
+signals. Keep PowerShell as the Windows default when there is no POSIX-shell
+signal.
 
 Also make duplicate-injection detection shell-aware. A guard that only matches
 `export VAR=` will miss PowerShell's `$env:VAR = ...` form and can wrap an
@@ -260,6 +266,25 @@ def tail_follow(file_path: Path) -> None:
             else:
                 time.sleep(0.1)
 ```
+
+### Optional Advisory Checks in Agent Sandboxes
+
+AI CLI subprocesses may run with outbound network disabled even when the user's
+normal terminal has network access. Prefer local CLI probes over optional
+network probes when the local CLI already exposes the needed information.
+
+**Rule 1**: Do not let a failed optional advisory check consume a once-per-session
+marker. Write the marker only after the script resolves a usable value and can
+make the intended decision. Otherwise a transient sandbox/network failure hides
+the hint for the rest of the session.
+
+**Rule 2**: If a local command can provide the needed value, try it with a short
+timeout and captured output. For example, `trellis --version` already runs the
+CLI's version comparison logic and can support an actionable update prompt
+without duplicating npm registry parsing.
+
+**Rule 3**: Keep advisory checks silent on failure. The user-facing context output
+must not fail or become noisy because an advisory check could not complete.
 
 ### 6. File Encoding
 
@@ -353,6 +378,7 @@ Before committing cross-platform code:
 - [ ] Content hashes computed across OSes normalize line endings (`\r\n` → `\n`) before hashing
 - [ ] Cross-OS JSON with potential legacy pollution carries a `__version` sentinel and the loader discards unknown/legacy versions
 - [ ] No platform-specific commands without fallbacks (e.g., `tail -f`)
+- [ ] Optional advisory checks do not burn once-per-session markers on failure
 - [ ] All file I/O specifies `encoding="utf-8"` and `errors="replace"`
 - [ ] All subprocess calls specify `encoding="utf-8"` and `errors="replace"`
 - [ ] Git commands use `-c i18n.logOutputEncoding=UTF-8`

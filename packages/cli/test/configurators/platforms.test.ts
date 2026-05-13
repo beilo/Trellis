@@ -790,7 +790,8 @@ describe("configurePlatform", () => {
       path.join(tmpDir, ".pi", "extensions", "trellis", "index.ts"),
       "utf-8",
     );
-    expect(extension).toContain('registerTool?.({\n    name: "subagent"');
+    expect(extension).toContain('registerTool?.({');
+    expect(extension).toContain('name: "subagent"');
     expect(extension).toContain('pi.on?.("session_start"');
     expect(extension).toContain('pi.on?.("tool_call"');
     expect(extension).toContain("function injectTrellisContextIntoBash");
@@ -820,12 +821,42 @@ describe("configurePlatform", () => {
     expect(extension).not.toContain(
       '["--mode", "json", "-p", "--no-session", toPiPromptArgument(prompt)]',
     );
-    expect(extension).not.toContain(".py");
+    // Pi must not install or reference Python hook files under .pi/ (the
+    // existence check on .pi/hooks above already covers installation; this
+    // guards that the extension never references a hook by .pi-prefixed path).
+    expect(extension).not.toContain(".pi/hooks");
+    expect(extension).not.toContain("inject-workflow-state.py");
+    expect(extension).not.toContain("inject-subagent-context.py");
+    expect(extension).not.toContain("session-start.py");
+    // get_context.py is allowed: it lives in .trellis/scripts/ and is the
+    // shared session-overview script invoked by every platform's hook.
 
     const settings = JSON.parse(
       fs.readFileSync(path.join(tmpDir, ".pi", "settings.json"), "utf-8"),
-    ) as { skills?: string[] };
+    ) as {
+      skills?: string[];
+      packages?: (
+        | string
+        | {
+            source?: string;
+            extensions?: unknown[];
+            skills?: unknown[];
+            prompts?: unknown[];
+            themes?: unknown[];
+          }
+      )[];
+    };
     expect(settings.skills).toEqual(["./skills"]);
+    const subagentsPkg = settings.packages?.find(
+      (p) => typeof p === "object" && p.source === "npm:pi-subagents",
+    );
+    expect(subagentsPkg).toEqual({
+      source: "npm:pi-subagents",
+      extensions: [],
+      skills: [],
+      prompts: [],
+      themes: [],
+    });
   });
 
   it("configurePlatform('pi') writes tracked templates exactly", async () => {
