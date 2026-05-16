@@ -26,9 +26,8 @@ const TEMPLATES_ROOT = join(
  *
  * - `sessionStartEvent`: null when the platform has no SessionStart hook
  *   (codex). Used to look up entries in `parsed.hooks[event]`.
- * - `userPromptEvent`: event key for the inject-workflow-state hook (varies:
- *   `UserPromptSubmit`, `BeforeAgent`, `userPromptSubmitted`,
- *   `beforeSubmitPrompt`).
+ * - `userPromptEvent`: inject-workflow-state hook 的事件名。Null 表示该平台没有
+ *   能注入上下文的逐轮 hook。
  * - `sessionStartTimeoutField` / `userPromptTimeoutField`: usually "timeout";
  *   copilot uses `timeoutSec` for its userPromptSubmitted event only.
  * - `unit`: "ms" for gemini; "s" for everything else.
@@ -99,12 +98,14 @@ const PLATFORM_HOOK_CONFIGS = [
     unit: "s",
   },
   {
+    // Cursor 的 beforeSubmitPrompt schema 只能返回 `{continue, user_message}`，
+    // 不能注入任意上下文，所以 Cursor 只依赖 sessionStart。
     platform: "cursor",
     path: "cursor/hooks.json",
     schema: "flat",
     sessionStartEvent: "sessionStart",
     sessionStartTimeoutField: "timeout",
-    userPromptEvent: "beforeSubmitPrompt",
+    userPromptEvent: null,
     userPromptTimeoutField: "timeout",
     unit: "s",
   },
@@ -179,18 +180,20 @@ describe("hook-timeouts: default timeouts survive Windows Python cold start (iss
         });
       }
 
-      it(`${cfg.userPromptEvent} (inject-workflow-state) timeout >= ${MIN_USER_PROMPT_S}${cfg.unit}`, () => {
-        const min =
-          cfg.unit === "ms" ? MIN_USER_PROMPT_S * 1000 : MIN_USER_PROMPT_S;
-        const events = parsed.hooks?.[cfg.userPromptEvent];
-        const hooks = extractHookEntries(events, cfg.schema);
-        expect(hooks.length).toBeGreaterThan(0);
-        for (const hook of hooks) {
-          const value = hook[cfg.userPromptTimeoutField];
-          expect(typeof value).toBe("number");
-          expect(value as number).toBeGreaterThanOrEqual(min);
-        }
-      });
+      if (cfg.userPromptEvent !== null) {
+        it(`${cfg.userPromptEvent} (inject-workflow-state) timeout >= ${MIN_USER_PROMPT_S}${cfg.unit}`, () => {
+          const min =
+            cfg.unit === "ms" ? MIN_USER_PROMPT_S * 1000 : MIN_USER_PROMPT_S;
+          const events = parsed.hooks?.[cfg.userPromptEvent];
+          const hooks = extractHookEntries(events, cfg.schema);
+          expect(hooks.length).toBeGreaterThan(0);
+          for (const hook of hooks) {
+            const value = hook[cfg.userPromptTimeoutField];
+            expect(typeof value).toBe("number");
+            expect(value as number).toBeGreaterThanOrEqual(min);
+          }
+        });
+      }
     });
   }
 });

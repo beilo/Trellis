@@ -100,7 +100,7 @@ Both regexes MUST use the `\1` backreference variant — `[workflow-state:([A-Za
    | Detected platform | `hookEventName` value |
    |---|---|
    | gemini | `BeforeAgent` |
-   | all others (claude, cursor, codex, qoder, codebuddy, droid, copilot, kiro) | `UserPromptSubmit` |
+   | claude, codex, qoder, codebuddy, droid, copilot | `UserPromptSubmit` or platform equivalent |
 
    When adding a new hook-capable platform whose per-turn event name is not
    `UserPromptSubmit`, extend `_detect_platform()` and the `hook_event_name`

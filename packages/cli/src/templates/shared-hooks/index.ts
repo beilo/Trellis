@@ -50,9 +50,9 @@ export type SharedHookPlatform =
  * - `session-start.py` — shipped by every platform with a SessionStart
  *   hook event *except* codex + copilot, which bundle a platform-specific
  *   session-start.py under their own template dirs.
- * - `inject-workflow-state.py` — every platform with a UserPromptSubmit
- *   (or equivalent) event. Kiro + codex self-included; platforms without
- *   per-turn main-session hooks are excluded.
+ * - `inject-workflow-state.py` — 分发给支持 UserPromptSubmit 或等价事件的平台。
+ *   Cursor 的 `beforeSubmitPrompt` 不能注入任意上下文，所以 Cursor 只依赖
+ *   `session-start.py`。Kiro + codex 自带实现；没有主会话逐轮 hook 的平台不分发。
  * - `inject-subagent-context.py` — class-1 (push-based) platforms only.
  *   Class-2 (pull-based) platforms (codex, copilot, gemini, qoder) can't
  *   have hooks mutate sub-agent prompts — their sub-agents load context
@@ -75,7 +75,6 @@ export const SHARED_HOOKS_BY_PLATFORM: Record<
   cursor: [
     "session-start.py",
     "inject-shell-session-context.py",
-    "inject-workflow-state.py",
     "inject-subagent-context.py",
   ],
   codex: ["inject-workflow-state.py"],

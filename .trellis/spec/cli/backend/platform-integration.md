@@ -1334,7 +1334,7 @@ The same rule applies to every other hook that's positioned as "repeated reminde
 | Platform | Event | Config File | Notes |
 |---|---|---|---|
 | Claude Code | `UserPromptSubmit` | `.claude/settings.json` | Auto-distributes via `writeSharedHooks()` |
-| Cursor | `beforeSubmitPrompt` | `.cursor/hooks.json` | Auto |
+| Cursor | `sessionStart` | `.cursor/hooks.json` | Auto; Cursor does not wire `beforeSubmitPrompt` because that schema cannot inject arbitrary context |
 | Qoder | `UserPromptSubmit` | `.qoder/settings.json` | Auto |
 | CodeBuddy | `UserPromptSubmit` | `.codebuddy/settings.json` | Auto |
 | Droid (Factory) | `UserPromptSubmit` | `.factory/settings.json` | Auto |

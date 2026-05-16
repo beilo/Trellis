@@ -139,4 +139,14 @@ describe("shared-hooks capability table", () => {
     expect(content).not.toContain("Status: READY");
     expect(content).not.toContain("<workflow>");
   });
+
+  it("shared session-start.py emits Cursor additional_context", () => {
+    const sessionStart = getSharedHookScripts().find(
+      (h) => h.name === "session-start.py",
+    );
+    expect(sessionStart, "session-start.py is missing from shared-hooks/").toBeDefined();
+    const content = sessionStart ? sessionStart.content : "";
+    expect(content).toContain('"hookSpecificOutput"');
+    expect(content).toContain('"additional_context"');
+  });
 });

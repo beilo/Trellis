@@ -799,11 +799,15 @@ Trellis compact SessionStart context. Use it to orient the session; load details
 Context loaded. Follow <task-status>. Load workflow/spec/task details only when needed.
 </ready>""")
 
+    context_text = output.getvalue()
     result = {
+        # Claude Code / Qoder / CodeBuddy / Droid / Gemini / Copilot 使用的格式
         "hookSpecificOutput": {
             "hookEventName": "SessionStart",
-            "additionalContext": output.getvalue(),
-        }
+            "additionalContext": context_text,
+        },
+        # Cursor sessionStart 使用顶层 snake_case 字段
+        "additional_context": context_text,
     }
 
     # Output JSON - stdout is already configured for UTF-8
