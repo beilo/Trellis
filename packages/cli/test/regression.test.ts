@@ -3167,6 +3167,7 @@ print(len(entries))
       "codex/agents/trellis-implement.toml",
       "codex/agents/trellis-check.toml",
       "codex/agents/trellis-research.toml",
+      "codex/agents/trellis-finish-work.toml",
     ];
 
     for (const relativePath of codexAgentFiles) {
@@ -4888,7 +4889,10 @@ describe("regression: class-2 platforms use pull-based sub-agent context", () =>
         ".codex/agents/trellis-implement.toml",
         ".codex/agents/trellis-check.toml",
       ],
-      nonPreludeAgents: [".codex/agents/trellis-research.toml"],
+      nonPreludeAgents: [
+        ".codex/agents/trellis-finish-work.toml",
+        ".codex/agents/trellis-research.toml",
+      ],
     },
     {
       id: "copilot" as const,
@@ -4936,10 +4940,8 @@ describe("regression: class-2 platforms use pull-based sub-agent context", () =>
         }
       });
 
-      it("research definition does NOT contain pull-based prelude", () => {
-        // research is orthogonal: it searches .trellis/spec/ and doesn't
-        // depend on an active task. Prelude would make it fail when Phase 1.2
-        // runs before planning-time jsonl curation.
+      it("non implement/check definitions do NOT contain pull-based prelude", () => {
+        // 中文注释：pull-based prelude 只属于 implement/check，其他代理有自己的输入契约。
         for (const file of nonPreludeAgents) {
           const content = fs.readFileSync(path.join(tmpDir, file), "utf-8");
           expect(content).not.toContain("Required: Load Trellis Context First");

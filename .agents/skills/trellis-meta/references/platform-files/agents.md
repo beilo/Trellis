@@ -5,6 +5,7 @@ Trellis agent files define specialized roles. Common Trellis agents in a user pr
 - `trellis-research`
 - `trellis-implement`
 - `trellis-check`
+- `trellis-finish-work` on platforms that provide a dedicated finish-work bookkeeper
 
 File locations and formats differ by platform, but responsibility boundaries should stay consistent.
 
@@ -15,6 +16,7 @@ File locations and formats differ by platform, but responsibility boundaries sho
 | `trellis-research` | Investigate the question and write findings into the current task's `research/`. |
 | `trellis-implement` | Implement against `prd.md`, optional `design.md` / `implement.md`, `implement.jsonl`, and related spec/research. |
 | `trellis-check` | Review changes, fix discovered issues, and run necessary checks. |
+| `trellis-finish-work` | Archive completed task(s) and record the session journal after work commits are already done. |
 
 Agent files should not become generic chat prompts. They should define input sources, write boundaries, whether code may be changed, and how results are reported.
 
@@ -65,6 +67,7 @@ This mode fits platforms whose hooks cannot reliably rewrite sub-agent prompts.
 | Implement agent must follow extra restrictions | The platform's `trellis-implement` agent file. |
 | Check agent must run project-specific commands | `trellis-check` agent file, and `.trellis/spec/` if needed. |
 | Research agent must output a fixed format | `trellis-research` agent file. |
+| Finish Work should use a cheaper bookkeeping model | `trellis-finish-work` agent file plus the platform's finish-work skill or command. |
 | Agent cannot read task context | Agent prelude or `inject-subagent-context` hook. |
 | Add a project-specific agent | Platform agent directory + related workflow/command/skill entry point. |
 

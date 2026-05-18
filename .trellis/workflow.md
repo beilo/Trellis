@@ -621,6 +621,7 @@ The AI drives a batched commit of this task's code changes so `/finish-work` can
 #### 3.5 Wrap-up reminder
 
 After the above, remind the user they can run `/finish-work` to wrap up (archive the task, record the session).
+On platforms with a dedicated `trellis-finish-work` agent, `/finish-work` may dispatch that agent for archive + journal bookkeeping after Phase 3.4 commits are complete.
 
 ---
 

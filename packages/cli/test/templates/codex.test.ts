@@ -15,6 +15,7 @@ const repoRoot = path.resolve(__dirname, "../../../..");
 
 const EXPECTED_AGENT_NAMES = [
   "trellis-check",
+  "trellis-finish-work",
   "trellis-implement",
   "trellis-research",
 ];
@@ -55,6 +56,21 @@ describe("codex getAllAgents", () => {
       expect(agent.content).toContain("description = ");
       expect(agent.content).toContain("developer_instructions = ");
     }
+  });
+
+  it("finish-work agent uses the low-cost model and strict bookkeeping boundaries", () => {
+    const agent = getAllAgents().find(
+      (candidate) => candidate.name === "trellis-finish-work",
+    );
+    expect(agent).toBeDefined();
+    if (!agent) return;
+
+    expect(agent.content).toContain('model = "gpt-5.4-mini"');
+    expect(agent.content).toContain("MUST NOT edit product code");
+    expect(agent.content).toContain("MUST NOT create work commits");
+    expect(agent.content).toContain("MUST NOT push");
+    expect(agent.content).toContain("Allowed dirty paths");
+    expect(agent.content).toContain("Work commits");
   });
 });
 

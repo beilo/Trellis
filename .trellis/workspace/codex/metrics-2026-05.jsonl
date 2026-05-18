@@ -13,3 +13,8 @@
 {"ts": "2026-05-07T05:59:31.698010+00:00", "event": "task.start", "task": "sync-0-5-4-features"}
 {"ts": "2026-05-07T06:53:28.467697+00:00", "event": "task.archive", "task": "sync-0-5-4-features"}
 {"ts": "2026-05-09T06:29:40.462611+00:00", "event": "task.archive", "task": "sync-0-6-0-beta-mem"}
+{"ts": "2026-05-14T08:26:59.066546+00:00", "event": "task.create", "task": "trellis-manager-ui", "title": "优化 Trellis Manager 桌面客户端 UI"}
+{"ts": "2026-05-14T08:27:49.496064+00:00", "event": "task.start", "task": "trellis-manager-ui"}
+{"ts": "2026-05-14T08:32:44.028365+00:00", "event": "task.finish", "task": "trellis-manager-ui"}
+{"ts": "2026-05-18T08:40:30.439992+00:00", "event": "task.create", "task": "codex-finish-work-agent", "title": "为 Finish Work 增加 Codex 低成本收尾子代理"}
+{"ts": "2026-05-18T08:44:01.597153+00:00", "event": "task.start", "task": "codex-finish-work-agent"}

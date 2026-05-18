@@ -2,6 +2,12 @@
 
 Wrap up the current session: archive the active task (and any other completed-but-unarchived tasks the user wants to clean up) and record the session journal. Code commits are NOT done here — those happen in workflow Phase 3.4 before you invoke this command.
 
+## Fast path: dedicated finish-work sub-agent
+
+If your platform has a dedicated `trellis-finish-work` sub-agent, dispatch it after Phase 3.4 work commits are done. Pass the active task, work commit hashes, journal title, and summary in the dispatch prompt. The sub-agent must still run the dirty-path gate below and stop on any non-Trellis dirty paths.
+
+If no such sub-agent is available, continue with the manual steps below.
+
 ## Step 1: Survey current state
 
 ```bash
