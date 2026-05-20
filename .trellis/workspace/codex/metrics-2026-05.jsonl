@@ -18,3 +18,5 @@
 {"ts": "2026-05-14T08:32:44.028365+00:00", "event": "task.finish", "task": "trellis-manager-ui"}
 {"ts": "2026-05-18T08:40:30.439992+00:00", "event": "task.create", "task": "codex-finish-work-agent", "title": "为 Finish Work 增加 Codex 低成本收尾子代理"}
 {"ts": "2026-05-18T08:44:01.597153+00:00", "event": "task.start", "task": "codex-finish-work-agent"}
+{"ts": "2026-05-20T07:16:58.914447+00:00", "event": "task.create", "task": "multi-project", "title": "trellis-manager-desktop 多项目管理功能"}
+{"ts": "2026-05-20T07:18:45.522434+00:00", "event": "task.start", "task": "multi-project"}
