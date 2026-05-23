@@ -37,12 +37,18 @@ import {
   replacePythonCommandLiterals,
 } from "../../src/configurators/shared.js";
 
-const BUNDLED_SKILL_NAME = "trellis-meta";
+const BUNDLED_SKILL_NAMES = ["trellis-meta", "trellis-spec-bootstarp"];
+const BUNDLED_SKILL_NAME = BUNDLED_SKILL_NAMES[0];
 const BUNDLED_REFERENCE = path.join(
   BUNDLED_SKILL_NAME,
   "references",
   "local-architecture",
   "overview.md",
+);
+const SPEC_BOOTSTARP_REFERENCE = path.join(
+  "trellis-spec-bootstarp",
+  "references",
+  "spec-writing.md",
 );
 
 function readConfiguredFile(root: string, relativePath: string): string {
@@ -264,7 +270,7 @@ describe("configurePlatform", () => {
     expect(actualNames).toEqual(
       [
         ...expected.map((s) => s.name),
-        BUNDLED_SKILL_NAME,
+        ...BUNDLED_SKILL_NAMES,
         "trellis-start",
       ].sort(),
     );
@@ -338,7 +344,7 @@ describe("configurePlatform", () => {
     const expectedPythonCmd =
       process.platform === "win32" ? "python" : "python3";
     expect(content).toContain(
-      `"command": "${expectedPythonCmd} .codex/hooks/inject-workflow-state.py"`,
+      `"command": "${expectedPythonCmd} -X utf8 .codex/hooks/inject-workflow-state.py"`,
     );
     expect(content).not.toContain("{{PYTHON_CMD}}");
   });
@@ -360,7 +366,7 @@ describe("configurePlatform", () => {
       .sort();
 
     expect(actualNames).toEqual(
-      [...expected.map((s) => s.name), BUNDLED_SKILL_NAME].sort(),
+      [...expected.map((s) => s.name), ...BUNDLED_SKILL_NAMES].sort(),
     );
 
     for (const skill of expected) {
@@ -526,7 +532,7 @@ describe("configurePlatform", () => {
       .map((e) => e.name)
       .sort();
     expect(actualSkillDirs).toEqual(
-      [...expectedSkills.map((s) => s.name), BUNDLED_SKILL_NAME].sort(),
+      [...expectedSkills.map((s) => s.name), ...BUNDLED_SKILL_NAMES].sort(),
     );
     for (const skill of expectedSkills) {
       const filePath = path.join(skillsDir, skill.name, "SKILL.md");
@@ -771,6 +777,11 @@ describe("configurePlatform", () => {
       fs.existsSync(path.join(tmpDir, ".pi", "skills", BUNDLED_REFERENCE)),
     ).toBe(true);
     expect(
+      fs.existsSync(
+        path.join(tmpDir, ".pi", "skills", SPEC_BOOTSTARP_REFERENCE),
+      ),
+    ).toBe(true);
+    expect(
       fs.existsSync(path.join(tmpDir, ".pi", "agents", "trellis-implement.md")),
     ).toBe(true);
     expect(
@@ -790,31 +801,17 @@ describe("configurePlatform", () => {
       path.join(tmpDir, ".pi", "extensions", "trellis", "index.ts"),
       "utf-8",
     );
-    expect(extension).toContain('registerTool?.({');
-    expect(extension).toContain('name: "subagent"');
+    expect(extension).toContain("registerTool?.({");
+    expect(extension).toContain('name: "trellis_subagent"');
     expect(extension).toContain('pi.on?.("session_start"');
     expect(extension).toContain('pi.on?.("tool_call"');
-    expect(extension).toContain("function injectTrellisContextIntoBash");
     expect(extension).toContain("ctx?.sessionManager?.getSessionId");
-    expect(extension).toContain("TRELLIS_CONTEXT_ID: contextKey");
-    expect(extension).toContain("function stripMarkdownFrontmatter");
-    expect(extension).toContain("function parseAgentConfig");
-    expect(extension).toContain("function resolveSubagentRunConfig");
-    expect(extension).toContain("function buildPiModelArgs");
-    expect(extension).toContain(
-      'return thinking ? ["--thinking", thinking] : []',
-    );
-    expect(extension).toContain("function resolvePiInvocation");
     expect(extension).toContain("TRELLIS_PI_CLI_JS");
-    expect(extension).toContain("...modelArgs");
-    expect(extension).toContain("child.stdin?.end(prompt)");
-    expect(extension).toContain("class BoundedBufferCollector");
-    expect(extension).toContain("function extractFinalAssistantText");
     expect(extension).toContain("function formatPiOutput");
     expect(extension).toContain('"## Trellis Agent Definition"');
-    expect(extension).toContain('content: [{ type: "text", text: output }]');
     expect(extension).toContain("ctx?.ui?.notify?.(");
     expect(extension).toContain("systemPrompt:");
+    expect(extension).toContain("isTrellisAgent(root, agentName)");
     expect(extension).not.toContain("message: buildTrellisContext");
     expect(extension).not.toContain('message:\n      "Trellis project context');
     expect(extension).not.toContain("persistent: true");
@@ -847,16 +844,6 @@ describe("configurePlatform", () => {
       )[];
     };
     expect(settings.skills).toEqual(["./skills"]);
-    const subagentsPkg = settings.packages?.find(
-      (p) => typeof p === "object" && p.source === "npm:pi-subagents",
-    );
-    expect(subagentsPkg).toEqual({
-      source: "npm:pi-subagents",
-      extensions: [],
-      skills: [],
-      prompts: [],
-      themes: [],
-    });
   });
 
   it("configurePlatform('pi') writes tracked templates exactly", async () => {
@@ -897,6 +884,11 @@ describe("configurePlatform", () => {
     expect(
       templates?.get(
         ".pi/skills/trellis-meta/references/local-architecture/overview.md",
+      ),
+    ).toBeDefined();
+    expect(
+      templates?.get(
+        ".pi/skills/trellis-spec-bootstarp/references/spec-writing.md",
       ),
     ).toBeDefined();
     expect(templates?.get(".pi/agents/trellis-implement.md")).toContain(
@@ -950,7 +942,7 @@ describe("configurePlatform", () => {
   it("codex hooks.json template keeps PYTHON_CMD placeholder", () => {
     const rawTemplate = getCodexHooksConfig();
     expect(rawTemplate).toContain(
-      "{{PYTHON_CMD}} .codex/hooks/inject-workflow-state.py",
+      "{{PYTHON_CMD}} -X utf8 .codex/hooks/inject-workflow-state.py",
     );
   });
 

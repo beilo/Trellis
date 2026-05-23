@@ -1,18 +1,42 @@
 import chalk from "chalk";
-import type { Command } from "commander";
+import { InvalidArgumentError, type Command } from "commander";
 
 import { isProvider, listProviders, type Provider } from "./adapters/index.js";
+import {
+  channelContextAdd,
+  channelContextDelete,
+  channelContextList,
+} from "./context.js";
 import { createChannel } from "./create.js";
 import { parseTrace } from "./dev-parse-trace.js";
 import { channelKill } from "./kill.js";
+import { channelInterrupt } from "./interrupt.js";
 import { channelList } from "./list.js";
 import { channelMessages } from "./messages.js";
 import { channelPrune, channelRm } from "./rm.js";
 import { channelSend } from "./send.js";
 import { channelRun } from "./run.js";
 import { channelSpawn } from "./spawn.js";
+import {
+  channelThreadPost,
+  channelThreadRename,
+  channelThreadShow,
+  channelForumList,
+} from "./threads.js";
+import { channelTitleClear, channelTitleSet } from "./title.js";
 import { runSupervisor } from "./supervisor.js";
 import { channelWait, parseDuration } from "./wait.js";
+import { parseCsv } from "./store/schema.js";
+import { parseInboxPolicy } from "@mindfoldhq/trellis-core/channel";
+
+function parseNonNegativeInteger(value: string): number {
+  if (!/^\d+$/.test(value)) {
+    throw new InvalidArgumentError(
+      `expected a non-negative integer, got '${value}'`,
+    );
+  }
+  return Number(value);
+}
 
 export function registerChannelCommand(program: Command): void {
   const channel = program
@@ -24,9 +48,36 @@ export function registerChannelCommand(program: Command): void {
   channel
     .command("create <name>")
     .description("Create a new channel (collaboration session)")
+    .option("--scope <scope>", "channel scope: project | global")
+    .option("--type <type>", "channel type: chat | forum", "chat")
     .option("--task <path>", "associated Trellis task directory")
     .option("--project <slug>", "project slug")
     .option("--labels <csv>", "comma-separated labels")
+    .option("--description <text>", "stable channel description")
+    .option(
+      "--context-file <absolute-path>",
+      "absolute file path attached as channel context (repeatable)",
+      (val: string, prev: string[] | undefined) => [...(prev ?? []), val],
+      [] as string[],
+    )
+    .option(
+      "--context-raw <text>",
+      "raw channel context text (repeatable)",
+      (val: string, prev: string[] | undefined) => [...(prev ?? []), val],
+      [] as string[],
+    )
+    .option(
+      "--linked-context-file <absolute-path>",
+      "[deprecated alias for --context-file] absolute file path (repeatable)",
+      (val: string, prev: string[] | undefined) => [...(prev ?? []), val],
+      [] as string[],
+    )
+    .option(
+      "--linked-context-raw <text>",
+      "[deprecated alias for --context-raw] raw context text (repeatable)",
+      (val: string, prev: string[] | undefined) => [...(prev ?? []), val],
+      [] as string[],
+    )
     .option("--cwd <path>", "working directory recorded in the create event")
     .option("--by <agent>", "agent name recorded as the creator", "main")
     .option("--force", "overwrite existing channel with the same name")
@@ -41,6 +92,13 @@ export function registerChannelCommand(program: Command): void {
           task?: string;
           project?: string;
           labels?: string;
+          scope?: string;
+          type?: string;
+          description?: string;
+          contextFile?: string[];
+          contextRaw?: string[];
+          linkedContextFile?: string[];
+          linkedContextRaw?: string[];
           cwd?: string;
           by?: string;
           force?: boolean;
@@ -63,13 +121,17 @@ export function registerChannelCommand(program: Command): void {
     .command("send <name>")
     .description("Send a message into the channel")
     .requiredOption("--as <agent>", "agent name sending")
-    .option("--kind <tag>", "tag (e.g. interrupt / phase_done / question)")
+    .option("--scope <scope>", "channel scope: project | global")
     .option(
       "--to <agents>",
       "comma-separated target agents (default: broadcast)",
     )
     .option("--stdin", "read message body from stdin")
     .option("--text-file <path>", "read message body from file")
+    .option(
+      "--delivery-mode <mode>",
+      "targeted delivery validation: appendOnly | requireKnownWorker | requireRunningWorker",
+    )
     .argument(
       "[text]",
       "inline text body (otherwise use --stdin / --text-file)",
@@ -82,10 +144,11 @@ export function registerChannelCommand(program: Command): void {
       ) => {
         const opts = raw as {
           as: string;
-          kind?: string;
+          scope?: string;
           to?: string;
           stdin?: boolean;
           textFile?: string;
+          deliveryMode?: string;
         };
         try {
           await channelSend(name, {
@@ -93,8 +156,9 @@ export function registerChannelCommand(program: Command): void {
             text,
             stdin: opts.stdin,
             textFile: opts.textFile,
-            kind: opts.kind,
+            scope: opts.scope,
             to: opts.to,
+            deliveryMode: opts.deliveryMode,
           });
         } catch (err) {
           console.error(
@@ -110,10 +174,15 @@ export function registerChannelCommand(program: Command): void {
     .command("wait <name>")
     .description("Block until an event matching the filter arrives, or timeout")
     .requiredOption("--as <agent>", "agent name waiting")
+    .option("--scope <scope>", "channel scope: project | global")
     .option("--timeout <duration>", "max wait (e.g. 30s, 2m, 1h)")
     .option("--from <agents>", "only wake on events from these agents (CSV)")
-    .option("--kind <kind>", "only wake on this event kind")
-    .option("--tag <tag>", "only wake on this user tag")
+    .option(
+      "--kind <kind[,kind...]>",
+      "only wake on these event kinds (CSV, OR semantics)",
+    )
+    .option("--thread <key>", "only wake on this thread key")
+    .option("--action <action>", "only wake on this thread action")
     .option(
       "--to <target>",
       "only wake on events targeted to this name (default: own agent)",
@@ -129,7 +198,9 @@ export function registerChannelCommand(program: Command): void {
         timeout?: string;
         from?: string;
         kind?: string;
-        tag?: string;
+        scope?: string;
+        thread?: string;
+        action?: string;
         to?: string;
         includeProgress?: boolean;
         all?: boolean;
@@ -140,7 +211,9 @@ export function registerChannelCommand(program: Command): void {
           timeoutMs: parseDuration(opts.timeout),
           from: opts.from,
           kind: opts.kind,
-          tag: opts.tag,
+          scope: opts.scope,
+          thread: opts.thread,
+          action: opts.action,
           to: opts.to,
           includeProgress: opts.includeProgress,
           all: opts.all,
@@ -155,10 +228,55 @@ export function registerChannelCommand(program: Command): void {
     });
 
   channel
+    .command("interrupt <name>")
+    .description("Interrupt a worker turn and send a replacement instruction")
+    .requiredOption("--as <agent>", "agent name requesting the interrupt")
+    .requiredOption("--to <agent>", "target worker name")
+    .option("--scope <scope>", "channel scope: project | global")
+    .option("--stdin", "read interrupt message body from stdin")
+    .option("--text-file <path>", "read interrupt message body from file")
+    .argument(
+      "[text]",
+      "inline interrupt message (otherwise use --stdin / --text-file)",
+    )
+    .action(
+      async (
+        name: string,
+        text: string | undefined,
+        raw: Record<string, unknown>,
+      ) => {
+        const opts = raw as {
+          as: string;
+          to: string;
+          scope?: string;
+          stdin?: boolean;
+          textFile?: string;
+        };
+        try {
+          await channelInterrupt(name, {
+            as: opts.as,
+            to: opts.to,
+            text,
+            stdin: opts.stdin,
+            textFile: opts.textFile,
+            scope: opts.scope,
+          });
+        } catch (err) {
+          console.error(
+            chalk.red("Error:"),
+            err instanceof Error ? err.message : err,
+          );
+          process.exit(1);
+        }
+      },
+    );
+
+  channel
     .command("spawn <name>")
     .description(
       "Register a worker (claude/codex) into the channel — the worker stays idle until the first `channel send --to <worker>` arrives",
     )
+    .option("--scope <scope>", "channel scope: project | global")
     .option(
       "--agent <agent-name>",
       "load .trellis/agents/<name>.md (sets default --provider / --model / system prompt)",
@@ -179,6 +297,10 @@ export function registerChannelCommand(program: Command): void {
       "auto-kill worker after this duration (e.g. 30m, 1h, 7200s)",
     )
     .option(
+      "--warn-before <duration>",
+      "emit supervisor_warning before timeout (default 5m; 0ms disables)",
+    )
+    .option(
       "--file <path>",
       "include a file's content as context in the worker's system prompt (glob supported, repeatable)",
       (val: string, prev: string[] | undefined) => [...(prev ?? []), val],
@@ -194,6 +316,19 @@ export function registerChannelCommand(program: Command): void {
       "--by <agent>",
       "identity recorded as the spawn author (defaults to TRELLIS_CHANNEL_AS env or 'main')",
     )
+    .option(
+      "--inbox-policy <policy>",
+      "worker inbox delivery policy: explicitOnly | broadcastAndExplicit (default explicitOnly)",
+    )
+    .option(
+      "--idle-timeout <duration>",
+      "OOM-guard idle-cleanup TTL for this worker (default 5m; 0 disables)",
+    )
+    .option(
+      "--max-live-workers <n>",
+      "spawn-time live-worker budget for this project/scope (default 6; 0 disables)",
+      parseNonNegativeInteger,
+    )
     .action(async (name: string, raw: Record<string, unknown>) => {
       const opts = raw as {
         agent?: string;
@@ -203,9 +338,14 @@ export function registerChannelCommand(program: Command): void {
         model?: string;
         resume?: string;
         timeout?: string;
+        warnBefore?: string;
         file?: string[];
         jsonl?: string[];
         by?: string;
+        scope?: string;
+        inboxPolicy?: string;
+        idleTimeout?: string;
+        maxLiveWorkers?: number;
       };
       if (opts.provider !== undefined && !isProvider(opts.provider)) {
         console.error(
@@ -223,9 +363,14 @@ export function registerChannelCommand(program: Command): void {
           model: opts.model,
           resume: opts.resume,
           timeoutMs: parseDuration(opts.timeout),
+          warnBeforeMs: parseDuration(opts.warnBefore),
           files: opts.file,
           jsonls: opts.jsonl,
           by: opts.by,
+          scope: opts.scope,
+          inboxPolicy: parseInboxPolicy(opts.inboxPolicy),
+          idleTimeoutMs: parseDuration(opts.idleTimeout),
+          maxLiveWorkers: opts.maxLiveWorkers,
         });
       } catch (err) {
         console.error(
@@ -267,7 +412,6 @@ export function registerChannelCommand(program: Command): void {
     .option("--message <text>", "inline prompt text")
     .option("--message-file <path>", "read prompt body from file")
     .option("--stdin", "read prompt body from stdin")
-    .option("--tag <tag>", "user tag (e.g. interrupt / phase_done / question)")
     .option(
       "--timeout <duration>",
       "max time to wait for done (e.g. 30s, 5m, 1h; default 5m)",
@@ -284,7 +428,6 @@ export function registerChannelCommand(program: Command): void {
         message?: string;
         messageFile?: string;
         stdin?: boolean;
-        tag?: string;
         timeout?: string;
       };
       if (opts.provider !== undefined && !isProvider(opts.provider)) {
@@ -307,7 +450,6 @@ export function registerChannelCommand(program: Command): void {
           message: opts.message,
           textFile: opts.messageFile,
           stdin: opts.stdin,
-          tag: opts.tag,
           timeoutMs: parseDuration(opts.timeout),
         });
       } catch (err) {
@@ -322,9 +464,10 @@ export function registerChannelCommand(program: Command): void {
   channel
     .command("rm <name>")
     .description("Kill workers and delete a channel directory entirely")
-    .action(async (name: string) => {
+    .option("--scope <scope>", "channel scope: project | global")
+    .action(async (name: string, raw: Record<string, unknown>) => {
       try {
-        await channelRm(name);
+        await channelRm(name, raw as { scope?: string });
       } catch (err) {
         console.error(
           chalk.red("Error:"),
@@ -339,6 +482,7 @@ export function registerChannelCommand(program: Command): void {
     .description(
       "Bulk-remove channels by criteria (defaults to dry-run preview)",
     )
+    .option("--scope <scope>", "channel scope: project | global")
     .option("--all", "remove all channels (except live ones and --keep)")
     .option("--empty", "remove channels with no activity (only create event)")
     .option(
@@ -364,6 +508,7 @@ export function registerChannelCommand(program: Command): void {
         yes?: boolean;
         dryRun?: boolean;
         keep?: string;
+        scope?: string;
       };
       try {
         await channelPrune({
@@ -373,12 +518,8 @@ export function registerChannelCommand(program: Command): void {
           ephemeral: opts.ephemeral,
           yes: opts.yes,
           dryRun: !opts.yes,
-          keep: opts.keep
-            ? opts.keep
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean)
-            : undefined,
+          keep: parseCsv(opts.keep),
+          scope: opts.scope,
         });
       } catch (err) {
         console.error(
@@ -394,6 +535,7 @@ export function registerChannelCommand(program: Command): void {
     .description(
       "List channels in ~/.trellis/channels/ with worker / activity summary",
     )
+    .option("--scope <scope>", "channel scope: project | global")
     .option("--json", "emit JSON instead of a formatted table")
     .option(
       "--project <slug>",
@@ -413,6 +555,7 @@ export function registerChannelCommand(program: Command): void {
         project?: string;
         all?: boolean;
         allProjects?: boolean;
+        scope?: string;
       };
       try {
         await channelList(opts);
@@ -428,6 +571,7 @@ export function registerChannelCommand(program: Command): void {
   channel
     .command("messages <name>")
     .description("View messages and events in the channel")
+    .option("--scope <scope>", "channel scope: project | global")
     .option("--raw", "print raw JSON (one event per line)")
     .option("--follow", "stream new events as they arrive (Ctrl-C to stop)")
     .option("--last <N>", "show only the last N matching events", (v) =>
@@ -442,7 +586,8 @@ export function registerChannelCommand(program: Command): void {
     )
     .option("--from <agents>", "filter by author (CSV)")
     .option("--to <target>", "filter by routing target")
-    .option("--tag <tag>", "filter by user tag (e.g. interrupt, final_answer)")
+    .option("--thread <key>", "filter by thread key")
+    .option("--action <action>", "filter by thread action")
     .option("--no-progress", "hide progress events (tool calls, deltas)")
     .action(async (name: string, raw: Record<string, unknown>) => {
       const opts = raw as {
@@ -453,7 +598,9 @@ export function registerChannelCommand(program: Command): void {
         kind?: string;
         from?: string;
         to?: string;
-        tag?: string;
+        scope?: string;
+        thread?: string;
+        action?: string;
         progress?: boolean; // commander negates --no-progress to progress:false
       };
       try {
@@ -465,7 +612,9 @@ export function registerChannelCommand(program: Command): void {
           kind: opts.kind,
           from: opts.from,
           to: opts.to,
-          tag: opts.tag,
+          scope: opts.scope,
+          thread: opts.thread,
+          action: opts.action,
           noProgress: opts.progress === false,
         });
       } catch (err) {
@@ -483,11 +632,267 @@ export function registerChannelCommand(program: Command): void {
       "Stop a worker in the channel (SIGTERM, or SIGKILL with --force)",
     )
     .requiredOption("--as <agent>", "worker agent name")
+    .option("--scope <scope>", "channel scope: project | global")
     .option("--force", "skip graceful shutdown, send SIGKILL immediately")
     .action(async (name: string, raw: Record<string, unknown>) => {
-      const opts = raw as { as: string; force?: boolean };
+      const opts = raw as { as: string; force?: boolean; scope?: string };
       try {
         await channelKill(name, opts);
+      } catch (err) {
+        console.error(
+          chalk.red("Error:"),
+          err instanceof Error ? err.message : err,
+        );
+        process.exit(1);
+      }
+    });
+
+  channel
+    .command("post <name> <action>")
+    .description("Append a structured thread event to a forum channel")
+    .requiredOption("--as <agent>", "agent name posting")
+    .option("--scope <scope>", "channel scope: project | global")
+    .option("--thread <key>", "thread key (required except opened)")
+    .option("--title <text>", "thread title")
+    .option("--text <text>", "event body")
+    .option("--stdin", "read event body from stdin")
+    .option("--text-file <path>", "read event body from file")
+    .option("--description <text>", "stable thread description")
+    .option("--status <status>", "thread status")
+    .option("--labels <csv>", "replace thread labels")
+    .option("--assignees <csv>", "replace thread assignees")
+    .option("--summary <text>", "thread summary")
+    .option(
+      "--context-file <absolute-path>",
+      "absolute file path attached as thread context (repeatable)",
+      (val: string, prev: string[] | undefined) => [...(prev ?? []), val],
+      [] as string[],
+    )
+    .option(
+      "--context-raw <text>",
+      "raw thread context text (repeatable)",
+      (val: string, prev: string[] | undefined) => [...(prev ?? []), val],
+      [] as string[],
+    )
+    .option(
+      "--linked-context-file <absolute-path>",
+      "[deprecated alias for --context-file] absolute file path (repeatable)",
+      (val: string, prev: string[] | undefined) => [...(prev ?? []), val],
+      [] as string[],
+    )
+    .option(
+      "--linked-context-raw <text>",
+      "[deprecated alias for --context-raw] raw context text (repeatable)",
+      (val: string, prev: string[] | undefined) => [...(prev ?? []), val],
+      [] as string[],
+    )
+    .action(
+      async (name: string, action: string, raw: Record<string, unknown>) => {
+        try {
+          await channelThreadPost(name, {
+            ...(raw as unknown as Parameters<typeof channelThreadPost>[1]),
+            action,
+          });
+        } catch (err) {
+          console.error(
+            chalk.red("Error:"),
+            err instanceof Error ? err.message : err,
+          );
+          process.exit(1);
+        }
+      },
+    );
+
+  channel
+    .command("forum <name>")
+    .description("List threads in a forum channel")
+    .option("--scope <scope>", "channel scope: project | global")
+    .option("--status <status>", "filter by thread status")
+    .option("--raw", "print raw reduced thread JSON")
+    .action(async (name: string, raw: Record<string, unknown>) => {
+      try {
+        await channelForumList(
+          name,
+          raw as Parameters<typeof channelForumList>[1],
+        );
+      } catch (err) {
+        console.error(
+          chalk.red("Error:"),
+          err instanceof Error ? err.message : err,
+        );
+        process.exit(1);
+      }
+    });
+
+  const thread = channel
+    .command("thread")
+    .description("Show or mutate one thread timeline");
+
+  thread
+    .argument("<name>", "channel name")
+    .argument("<thread>", "thread key")
+    .option("--scope <scope>", "channel scope: project | global")
+    .option("--raw", "print raw thread events")
+    .action(
+      async (name: string, threadKey: string, raw: Record<string, unknown>) => {
+        try {
+          await channelThreadShow(
+            name,
+            threadKey,
+            raw as Parameters<typeof channelThreadShow>[2],
+          );
+        } catch (err) {
+          console.error(
+            chalk.red("Error:"),
+            err instanceof Error ? err.message : err,
+          );
+          process.exit(1);
+        }
+      },
+    );
+
+  thread
+    .command("rename <name> <oldThread> <newThread>")
+    .description("Rename a thread inside a forum channel")
+    .requiredOption("--as <agent>", "agent name")
+    .option("--scope <scope>", "channel scope: project | global")
+    .action(
+      async (
+        name: string,
+        oldThread: string,
+        newThread: string,
+        raw: Record<string, unknown>,
+      ) => {
+        const opts = raw as { as: string; scope?: string };
+        try {
+          await channelThreadRename(name, oldThread, newThread, opts);
+        } catch (err) {
+          console.error(
+            chalk.red("Error:"),
+            err instanceof Error ? err.message : err,
+          );
+          process.exit(1);
+        }
+      },
+    );
+
+  const context = channel
+    .command("context")
+    .description("Manage channel-level or thread-level context entries");
+
+  const addContextOptions = (cmd: Command): Command =>
+    cmd
+      .option("--as <agent>", "agent name", "main")
+      .option("--scope <scope>", "channel scope: project | global")
+      .option(
+        "--thread <key>",
+        "mutate thread-level context instead of channel-level",
+      )
+      .option(
+        "--file <absolute-path>",
+        "absolute file path (repeatable)",
+        (val: string, prev: string[] | undefined) => [...(prev ?? []), val],
+        [] as string[],
+      )
+      .option(
+        "--raw <text>",
+        "raw text entry (repeatable)",
+        (val: string, prev: string[] | undefined) => [...(prev ?? []), val],
+        [] as string[],
+      );
+
+  addContextOptions(context.command("add <name>"))
+    .description("Add context entries")
+    .action(async (name: string, raw: Record<string, unknown>) => {
+      try {
+        await channelContextAdd(
+          name,
+          raw as unknown as Parameters<typeof channelContextAdd>[1],
+        );
+      } catch (err) {
+        console.error(
+          chalk.red("Error:"),
+          err instanceof Error ? err.message : err,
+        );
+        process.exit(1);
+      }
+    });
+
+  addContextOptions(context.command("delete <name>"))
+    .description("Delete context entries")
+    .action(async (name: string, raw: Record<string, unknown>) => {
+      try {
+        await channelContextDelete(
+          name,
+          raw as unknown as Parameters<typeof channelContextDelete>[1],
+        );
+      } catch (err) {
+        console.error(
+          chalk.red("Error:"),
+          err instanceof Error ? err.message : err,
+        );
+        process.exit(1);
+      }
+    });
+
+  context
+    .command("list <name>")
+    .description("List projected current context entries")
+    .option("--scope <scope>", "channel scope: project | global")
+    .option(
+      "--thread <key>",
+      "show thread-level context instead of channel-level",
+    )
+    .option("--raw", "print one context entry JSON per line")
+    .action(async (name: string, raw: Record<string, unknown>) => {
+      try {
+        await channelContextList(
+          name,
+          raw as Parameters<typeof channelContextList>[1],
+        );
+      } catch (err) {
+        console.error(
+          chalk.red("Error:"),
+          err instanceof Error ? err.message : err,
+        );
+        process.exit(1);
+      }
+    });
+
+  const title = channel
+    .command("title")
+    .description("Set or clear the channel display title");
+
+  title
+    .command("set <name>")
+    .description("Set the channel display title")
+    .option("--as <agent>", "agent name", "main")
+    .option("--scope <scope>", "channel scope: project | global")
+    .requiredOption("--title <text>", "display title")
+    .action(async (name: string, raw: Record<string, unknown>) => {
+      const opts = raw as { as: string; scope?: string; title: string };
+      try {
+        await channelTitleSet(name, opts);
+      } catch (err) {
+        console.error(
+          chalk.red("Error:"),
+          err instanceof Error ? err.message : err,
+        );
+        process.exit(1);
+      }
+    });
+
+  title
+    .command("clear <name>")
+    .description("Clear the channel display title")
+    .option("--as <agent>", "agent name", "main")
+    .option("--scope <scope>", "channel scope: project | global")
+    .action(async (name: string, raw: Record<string, unknown>) => {
+      try {
+        await channelTitleClear(
+          name,
+          raw as unknown as Parameters<typeof channelTitleClear>[1],
+        );
       } catch (err) {
         console.error(
           chalk.red("Error:"),

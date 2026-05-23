@@ -20,7 +20,7 @@ import type { AdapterEvent, ParseResult } from "./types.js";
  *     item/started   webSearch           → progress(kind=web_search, query)
  *     item/started   fileChange          → progress(kind=file_change)
  *     item/completed agentMessage        → say(text, phase)
- *     item/agentMessage/delta            → progress(text_delta)
+ *     item/agentMessage/delta            → progress(kind, stream_id, text_delta)
  *     item/completed commandExecution    → optional progress(status, exitCode)
  *     item/started   collabAgentToolCall → error(reason=collab_blocked, recommendation=set features.multi_agent=false)
  *     turn/completed                     → done
@@ -50,6 +50,12 @@ import type { AdapterEvent, ParseResult } from "./types.js";
 export interface CodexCtx {
   /** id → label tracking outgoing requests, so adapter can recognise their responses. */
   pending: Map<number, "initialize" | "thread/start" | "turn/start" | "other">;
+  /** Codex item id → stream metadata used to classify interleaved deltas. */
+  items: Map<string, CodexItemMeta>;
+  /** Whether the current turn has emitted a final user-visible answer. */
+  finalMessageSeen: boolean;
+  /** Codex may send turn/completed before the final agentMessage item. */
+  pendingDone: boolean;
   /** Last-known thread id (used to scope future requests). */
   threadId?: string;
   /** Monotonic outbound id allocator. */
@@ -57,7 +63,18 @@ export interface CodexCtx {
 }
 
 export function createCodexCtx(): CodexCtx {
-  return { pending: new Map(), nextId: 1 };
+  return {
+    pending: new Map(),
+    items: new Map(),
+    finalMessageSeen: false,
+    pendingDone: false,
+    nextId: 1,
+  };
+}
+
+interface CodexItemMeta {
+  type?: string;
+  phase?: string;
 }
 
 interface JsonRpcInbound {
@@ -128,7 +145,7 @@ export function parseCodexLine(line: string, ctx: CodexCtx): ParseResult {
 
   // (3) Notification
   if (msg.method) {
-    return handleNotification(msg);
+    return handleNotification(msg, ctx);
   }
 
   return { events: [] };
@@ -212,20 +229,25 @@ function handleResponse(msg: JsonRpcInbound, ctx: CodexCtx): ParseResult {
   return { events, side };
 }
 
-function handleNotification(msg: JsonRpcInbound): ParseResult {
+function handleNotification(msg: JsonRpcInbound, ctx: CodexCtx): ParseResult {
   const method = msg.method as string;
 
   if (SKIP_METHODS.has(method)) return { events: [] };
 
   switch (method) {
     case "item/started":
-      return handleItemStarted(msg);
+      return handleItemStarted(msg, ctx);
     case "item/completed":
-      return handleItemCompleted(msg);
+      return handleItemCompleted(msg, ctx);
     case "item/agentMessage/delta":
-      return handleAgentMessageDelta(msg);
+      return handleAgentMessageDelta(msg, ctx);
     case "turn/completed":
-      return { events: [{ kind: "done", payload: {} }] };
+      if (ctx.finalMessageSeen) {
+        ctx.pendingDone = false;
+        return { events: [{ kind: "done", payload: {} }] };
+      }
+      ctx.pendingDone = true;
+      return { events: [] };
     case "turn/aborted":
       return {
         events: [{ kind: "error", payload: { message: "turn aborted" } }],
@@ -266,9 +288,10 @@ function handleNotification(msg: JsonRpcInbound): ParseResult {
   }
 }
 
-function handleItemStarted(msg: JsonRpcInbound): ParseResult {
+function handleItemStarted(msg: JsonRpcInbound, ctx: CodexCtx): ParseResult {
   const item = ((msg.params ?? {}) as { item?: Record<string, unknown> }).item;
   if (!isObject(item)) return { events: [] };
+  rememberItem(ctx, item);
   const t = item.type as string | undefined;
   switch (t) {
     case "commandExecution":
@@ -388,9 +411,10 @@ function handleItemStarted(msg: JsonRpcInbound): ParseResult {
   }
 }
 
-function handleItemCompleted(msg: JsonRpcInbound): ParseResult {
+function handleItemCompleted(msg: JsonRpcInbound, ctx: CodexCtx): ParseResult {
   const item = ((msg.params ?? {}) as { item?: Record<string, unknown> }).item;
   if (!isObject(item)) return { events: [] };
+  rememberItem(ctx, item);
   const t = item.type as string | undefined;
 
   switch (t) {
@@ -400,7 +424,7 @@ function handleItemCompleted(msg: JsonRpcInbound): ParseResult {
       const phase = item.phase as string | undefined;
       // Codex emits `commentary` agentMessages as inline narration / thinking
       // during a turn; the actual user-visible answer is the `final_answer`
-      // (or an untagged agentMessage). Map commentary onto `progress` so the
+      // (or an agentMessage without a phase). Map commentary onto `progress` so the
       // log's `kind:message` stays "one turn-answer per event" and
       // `--no-progress` / `wait --kind message` behave as expected.
       if (phase === "commentary") {
@@ -421,14 +445,13 @@ function handleItemCompleted(msg: JsonRpcInbound): ParseResult {
           ],
         };
       }
-      return {
-        events: [
-          {
-            kind: "message",
-            payload: phase ? { text, tag: phase } : { text },
-          },
-        ],
-      };
+      ctx.finalMessageSeen = true;
+      const events: AdapterEvent[] = [{ kind: "message", payload: { text } }];
+      if (ctx.pendingDone) {
+        ctx.pendingDone = false;
+        events.push({ kind: "done", payload: {} });
+      }
+      return { events };
     }
     case "commandExecution": {
       const exitCode = item.exitCode as number | undefined;
@@ -478,19 +501,54 @@ function handleItemCompleted(msg: JsonRpcInbound): ParseResult {
   }
 }
 
-function handleAgentMessageDelta(msg: JsonRpcInbound): ParseResult {
+function handleAgentMessageDelta(
+  msg: JsonRpcInbound,
+  ctx: CodexCtx,
+): ParseResult {
+  const params = msg.params ?? {};
   const delta =
-    ((msg.params ?? {}) as { delta?: string; text?: string }).delta ??
-    ((msg.params ?? {}) as { text?: string }).text;
+    (params as { delta?: string; text?: string }).delta ??
+    (params as { text?: string }).text;
   if (!delta) return { events: [] };
+
+  const itemId =
+    typeof params.itemId === "string" ? (params.itemId as string) : undefined;
+  const item = isObject(params.item) ? params.item : undefined;
+  if (item) rememberItem(ctx, item);
+  const meta =
+    itemId !== undefined ? ctx.items.get(itemId) : item && itemMeta(item);
+  const kind = classifyAgentMessageDelta(meta);
+  const detail: Record<string, unknown> = { kind, text_delta: delta };
+  if (itemId) detail.stream_id = itemId;
+  if (meta?.phase) detail.phase = meta.phase;
+
   return {
     events: [
       {
         kind: "progress",
-        payload: { detail: { text_delta: delta } },
+        payload: { detail },
       },
     ],
   };
+}
+
+function rememberItem(ctx: CodexCtx, item: Record<string, unknown>): void {
+  const id = item.id;
+  if (typeof id !== "string") return;
+  ctx.items.set(id, itemMeta(item));
+}
+
+function itemMeta(item: Record<string, unknown>): CodexItemMeta {
+  return {
+    type: typeof item.type === "string" ? item.type : undefined,
+    phase: typeof item.phase === "string" ? item.phase : undefined,
+  };
+}
+
+function classifyAgentMessageDelta(meta: CodexItemMeta | undefined): string {
+  if (meta?.type === "reasoning") return "reasoning";
+  if (meta?.phase === "commentary") return "commentary";
+  return "output";
 }
 
 function isObject(x: unknown): x is Record<string, unknown> {
@@ -514,27 +572,33 @@ export function encodeCodexRequest(
 export function encodeCodexUserMessage(
   ctx: CodexCtx,
   text: string,
-  tag?: string,
 ): { id: number; line: string } {
   if (!ctx.threadId) {
     throw new Error(
       "Codex adapter: thread/start has not completed; cannot send user message yet",
     );
   }
-  let body = text;
-  if (tag === "interrupt") {
-    body =
-      "[GRID INTERRUPT — drop current work and follow this new instruction]\n" +
-      text;
-  }
+  ctx.finalMessageSeen = false;
+  ctx.pendingDone = false;
   return encodeCodexRequest(
     ctx,
     "turn/start",
     {
       threadId: ctx.threadId,
-      input: [{ type: "text", text: body }],
+      input: [{ type: "text", text }],
     },
     "turn/start",
+  );
+}
+
+export function encodeCodexInterruptMessage(
+  ctx: CodexCtx,
+  text: string,
+): { id: number; line: string } {
+  return encodeCodexUserMessage(
+    ctx,
+    "[GRID INTERRUPT - drop current work and follow this new instruction]\n" +
+      text,
   );
 }
 

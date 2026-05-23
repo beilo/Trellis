@@ -1,5 +1,11 @@
-import { parseChannelKind } from "./store/events.js";
-import { selectExistingChannelProject } from "./store/paths.js";
+import { parseChannelKinds } from "./store/events.js";
+import { resolveExistingChannelRef } from "./store/paths.js";
+import {
+  normalizeThreadKey,
+  parseCsv,
+  parseChannelScope,
+  parseThreadAction,
+} from "./store/schema.js";
 import { watchEvents, type WatchFilter } from "./store/watch.js";
 
 export interface WaitOptions {
@@ -7,8 +13,10 @@ export interface WaitOptions {
   timeoutMs?: number;
   from?: string;
   kind?: string;
-  tag?: string;
   to?: string;
+  scope?: string;
+  thread?: string;
+  action?: string;
   includeProgress?: boolean;
   /** Wait until every agent in --from has produced a matching event. */
   all?: boolean;
@@ -20,13 +28,10 @@ export async function channelWait(
   channelName: string,
   opts: WaitOptions,
 ): Promise<void> {
-  selectExistingChannelProject(channelName);
-  const fromList = opts.from
-    ? opts.from
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-    : undefined;
+  const ref = resolveExistingChannelRef(channelName, {
+    scope: parseChannelScope(opts.scope),
+  });
+  const fromList = parseCsv(opts.from);
 
   if (opts.all && (!fromList || fromList.length === 0)) {
     throw new Error("--all requires --from <a,b,...>");
@@ -35,9 +40,10 @@ export async function channelWait(
   const filter: WatchFilter = {
     self: opts.as,
     from: fromList,
-    kind: parseChannelKind(opts.kind),
-    tag: opts.tag,
+    kind: parseChannelKinds(opts.kind),
     to: opts.to ?? opts.as, // default: broadcasts to me + explicit-to-me
+    thread: opts.thread ? normalizeThreadKey(opts.thread) : undefined,
+    action: opts.action ? parseThreadAction(opts.action) : undefined,
     includeProgress: opts.includeProgress,
   };
 
@@ -53,6 +59,7 @@ export async function channelWait(
   try {
     for await (const ev of watchEvents(channelName, filter, {
       signal: abort.signal,
+      project: ref.project,
     })) {
       console.log(JSON.stringify(ev));
       if (!pending) return;

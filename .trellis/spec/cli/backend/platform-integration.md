@@ -103,7 +103,7 @@ When adding a new platform `{platform}`, update the following:
 
 > Note: Pi Agent uses project-local TypeScript extensions instead of Trellis Python hooks. Keep generated hooks under `.pi/extensions/`, write prompt templates under `.pi/prompts/trellis-*.md`, write Agent Skills under `.pi/skills/`, and do not copy `shared-hooks/*.py` into `.pi/`. Do not redirect Pi to shared `.agents/skills` until shared Agent Skill text is platform-neutral; Codex and Pi command references can differ. For the nested Pi launcher contract, see "Scenario: Pi Sub-Agent Launcher".
 >
-> Project-local package isolation rule: when Trellis enables Pi for a project, `.pi/settings.json` must include a project-level `packages` array entry with `"source": "npm:pi-subagents"` and empty resource lists (`extensions`, `skills`, `prompts`, `themes`) to isolate global `npm:pi-subagents` effects from the repository while keeping the user's global Pi environment intact outside the project.
+> Project-local package isolation rule: when Trellis enables Pi for a project, `.pi/settings.json` does not include `npm:pi-subagents` in `packages` — Trellis's own tool is named `trellis_subagent`, so no name collision with community `subagent` tool exists. Users may install community sub-agent packages (nicobailon/pi-subagents or tintinweb/pi-subagents) independently.
 
 **Skills pattern** (Codex, Kiro):
 
@@ -277,6 +277,11 @@ Use bundled skills when a built-in skill needs files beyond `SKILL.md`, such as 
 - Init integration test proving at least Claude and Codex write `trellis-meta/SKILL.md` plus one reference file.
 - Configurator test proving configured files are byte-for-byte equal to `collectPlatformTemplates()` for every platform that writes skills.
 - Regression test proving `.trellis/.template-hashes.json` includes bundled skill reference files after init.
+- Release smoke test when a changelog or docs page claims the skill is
+  bundled: build the CLI, verify the skill appears in `npm pack --dry-run
+  --json` under `dist/templates/common/bundled-skills/<skill>/`, then run the
+  built binary in a fresh temp repository and confirm both generated skill
+  files and `.trellis/.template-hashes.json` contain the skill paths.
 
 ##### 7. Wrong vs Correct
 
@@ -296,6 +301,13 @@ for (const [filePath, content] of collectSkillTemplates(skillRoot, skills, bundl
 ```
 
 **Rule**: Do not add a parallel installer for built-in multi-file skills. If `trellis init` writes a bundled skill file, the platform's `collectTemplates()` path must return the same relative path and byte-identical content so `.trellis/.template-hashes.json` can track it. At minimum, tests must cover one reference file (for example `trellis-meta/references/core/template-pipeline.md`) and the platform-specific install root.
+
+**Release rule**: A bundled skill is not release-ready until it has passed the
+source, dist, generated-files, and update-tracking chain:
+`src/templates/common/bundled-skills/<skill>/` ->
+`dist/templates/common/bundled-skills/<skill>/` -> platform skill roots after
+built-binary `trellis init` -> `.trellis/.template-hashes.json` -> built-binary
+`trellis update --dry-run` with no pending changes.
 
 ### Step 5: Template Extraction
 
@@ -407,7 +419,7 @@ described above. Without one of these session signals, `task.py start` must
 fail with a clear session identity hint and must not write
 `.trellis/.current-task`.
 Pi is extension-backed rather than Python-hook-backed: `tool_call` must mutate
-`event.input.command` before Bash execution, and the custom `subagent` tool must
+`event.input.command` before Bash execution, and the custom `trellis_subagent` tool must
 spawn child `pi` processes with `TRELLIS_CONTEXT_ID` in `env`.
 
 Hook or plugin output that mentions an active task should include the source
@@ -529,7 +541,7 @@ For Pi Agent:
 | Per-turn workflow-state breadcrumb | `input` extension event — emits `<workflow-state>` + `<session-overview>` via `buildPerTurnInjection()` |
 | Per-agent-invocation context | `before_agent_start` extension event — appends `buildTrellisContext()` (PRD + jsonl) **and** the same per-turn breadcrumb to `systemPrompt` so sub-agent first turns see workflow state |
 | Per-Bash-tool session identity | `tool_call` extension event; mutates `event.input.command` in place via `injectTrellisContextIntoBash()` to prefix `export TRELLIS_CONTEXT_ID=<context-key>;` |
-| Sub-agent dispatch | custom `subagent` tool with `promptSnippet`/`promptGuidelines = SUBAGENT_DISPATCH_PROTOCOL`; resolves the Pi CLI JS entrypoint when possible, runs `--mode text -p --no-session`, sends the delegated prompt through stdin, and forwards `TRELLIS_CONTEXT_ID` |
+| Sub-agent dispatch | custom `trellis_subagent` tool with `promptSnippet`/`promptGuidelines = SUBAGENT_DISPATCH_PROTOCOL`; resolves the Pi CLI JS entrypoint when possible, runs `--mode text -p --no-session`, sends the delegated prompt through stdin, and forwards `TRELLIS_CONTEXT_ID` |
 
 The three injection points (`input` / `before_agent_start` / `tool_call`) are coordinated through `TurnContextCache` so the same turn doesn't re-spawn `get_context.py --mode session-overview`. See "Class-3 injection points (Pi extension)" below the modes table for the runtime contract.
 
@@ -656,7 +668,8 @@ spawn(invocation.command, [
 | Output mode | Use `--mode text`; keep final-output formatter tolerant of structured or diagnostic output |
 | Context | Forward `TRELLIS_CONTEXT_ID` into the child env when available |
 | Agent config | Parse `model`, `thinking`, and `fallbackModels` from `.pi/agents/*.md` frontmatter |
-| Per-call overrides | `subagent` tool input may override frontmatter with `model` and `thinking` |
+| Per-call overrides | `trellis_subagent` tool input may override frontmatter with `model` and `thinking` |
+| Agent validation | `isTrellisAgent()` checks `existsSync(.pi/agents/trellis-{agent}.md)` before spawn; invalid → returns error text listing community alternatives |
 | Model/thinking args | If model and thinking are present and model has no thinking suffix, pass `--model <model>:<thinking>`; if model already has a suffix, pass it unchanged; if thinking exists without model, pass `--thinking <level>` |
 | Output buffers | Bound stdout and stderr collection separately; keep the tail plus truncation notice |
 
@@ -885,7 +898,7 @@ Platform can expose hook-equivalent events and custom tools through a project-lo
 
 | Platform | Extension surface | Context delivery |
 |---|---|---|
-| Pi Agent | `.pi/extensions/trellis/index.ts` events + `subagent` tool | extension builds prompt from `.pi/agents/*.md`, `prd.md`, `design.md` if present, `implement.md` if present, and JSONL-referenced files via `buildTrellisContext()`; injects per-turn `<workflow-state>` + `<session-overview>` via `buildPerTurnInjection()`; agent definitions also receive the pull-based prelude as a fallback |
+| Pi Agent | `.pi/extensions/trellis/index.ts` events + `trellis_subagent` tool | extension builds prompt from `.pi/agents/*.md`, `prd.md`, `design.md` if present, `implement.md` if present, and JSONL-referenced files via `buildTrellisContext()`; injects per-turn `<workflow-state>` + `<session-overview>` via `buildPerTurnInjection()`; agent definitions also receive the pull-based prelude as a fallback |
 
 See **"Class-3 injection points (Pi extension)"** and **"Cross-platform consistency invariant"** below for the runtime contract details.
 
@@ -898,7 +911,7 @@ See **"Class-3 injection points (Pi extension)"** and **"Cross-platform consiste
 | `input` | `pi.on?.("input", …)` | every user turn (pre-LLM) | per-turn `<workflow-state>` + `<session-overview>` via `buildPerTurnInjection()`; same content goes into both `additionalContext` and `systemPrompt` so the breadcrumb survives whichever the model surface honors |
 | `before_agent_start` | `pi.on?.("before_agent_start", …)` | every agent invocation (main + sub-agents) | full Trellis context via `buildTrellisContext()` (PRD + jsonl-referenced specs + agent definition) **appended to** the existing systemPrompt, plus the same per-turn breadcrumb so a sub-agent's first turn still sees workflow state |
 | `tool_call` (Bash) | `pi.on?.("tool_call", …)` | every Bash tool call | mutates `event.input.command` in place via `injectTrellisContextIntoBash()` to prefix `export TRELLIS_CONTEXT_ID=<context-key>;` so child Python scripts (e.g. `task.py current`) inherit session identity |
-| `subagent` tool | `pi.registerTool?.({ name: "subagent", … })` | extension load time (once) | `promptSnippet` and `promptGuidelines` carry `SUBAGENT_DISPATCH_PROTOCOL` so the model sees the dispatch contract before it ever calls the tool |
+| `trellis_subagent` tool | `pi.registerTool?.({ name: "trellis_subagent", … })` | extension load time (once) | `promptSnippet` and `promptGuidelines` carry `SUBAGENT_DISPATCH_PROTOCOL` so the model sees the dispatch contract before it ever calls the tool |
 
 `TurnContextCache` (in `index.ts.txt`) memoizes the per-turn context-key → `{workflowState, sessionOverview}` pair so the **same** turn's `input` and `before_agent_start` handlers don't double-spawn `get_context.py --mode session-overview`. The cache key is the resolved context key; entries are short-lived (one turn).
 
@@ -954,7 +967,7 @@ The dispatch protocol text (the `Active task: <path>` first-line rule plus the c
 | Writer | Location | Consumed by |
 |---|---|---|
 | Workflow breadcrumb | `templates/trellis/workflow.md` `[workflow-state:in_progress]` block | Python `inject-workflow-state.py` and the Pi TS port — surfaced per-turn while a task is in progress |
-| Pi extension constant | `templates/pi/extensions/trellis/index.ts.txt:SUBAGENT_DISPATCH_PROTOCOL` | Pi `subagent` tool's `promptSnippet` / `promptGuidelines` — surfaced at extension load and on each tool description render |
+| Pi extension constant | `templates/pi/extensions/trellis/index.ts.txt:SUBAGENT_DISPATCH_PROTOCOL` | Pi `trellis_subagent` tool's `promptSnippet` / `promptGuidelines` — surfaced at extension load and on each tool description render |
 
 When you change one, change both. The two channels exist because:
 
@@ -1105,6 +1118,43 @@ The route depends on task intent, artifact presence, and execution mode. Missing
 - **List-context seed**: `task.py list-context` prints "no curated entries yet" for seed-only jsonl.
 - **Artifact gates**: workflow-state, SessionStart, and continue distinguish PRD-only lightweight tasks from complex tasks that still need `design.md` / `implement.md`.
 
+## Parent / Child Task Tree Contract
+
+### Scope / Trigger
+
+Use parent/child task trees when a request contains multiple deliverables that can be planned, implemented, checked, and archived independently. The hierarchy is for work structure and review scope, not for dependency scheduling.
+
+### Signatures
+
+```bash
+python3 ./.trellis/scripts/task.py create "<title>" --slug <name> --parent <parent-dir>
+python3 ./.trellis/scripts/task.py add-subtask <parent-dir> <child-dir>
+python3 ./.trellis/scripts/task.py remove-subtask <parent-dir> <child-dir>
+```
+
+### Contracts
+
+| Contract | Enforcer | Behavior |
+|---|---|---|
+| New child creation | `task_store.py` | `create --parent` writes the child's `parent` field and appends the child directory name to the parent's `children` list. |
+| Existing task link | `task_store.py` | `add-subtask` links two existing active tasks; the child must not already have a different parent. |
+| Unlink | `task_store.py` | `remove-subtask` removes the child from the parent's `children` and clears the child's `parent`. |
+| Parent responsibility | workflow / skills | Parent task owns source requirements, task map, cross-child acceptance, and final integration review. |
+| Child responsibility | workflow / skills | Child task owns one independently verifiable deliverable, including its own dependencies and acceptance criteria. |
+| Archive progress | `script-conventions.md` / `children_progress` | Parent `children` is historical. Archiving a child does not prune it from the parent; missing active children count as completed. |
+
+### Good / Base / Bad Cases
+
+- **Good**: parent task records the overall requirement set and lists child deliverables; each child has its own PRD and any ordering dependency is written in that child's planning artifacts.
+- **Base**: a single lightweight task uses no parent/child structure.
+- **Bad**: parent task is started as a generic "manager" implementation task while child tasks are the only real deliverables.
+- **Bad**: one child depends on another but the dependency is only implied by the parent/child tree. The child artifact must state the dependency explicitly.
+
+### Tests Required
+
+- Workflow template guidance must mention when to use parent/child task trees and where dependency ordering belongs.
+- Task system references must match the archive invariant in `script-conventions.md`.
+
 ---
 
 ## Workflow Step Detail Loading
@@ -1208,6 +1258,24 @@ conversation:
 
 Keep hook payload shapes unchanged. Add this as text inside the existing
 context string, not as a new JSON key.
+
+### Per-Platform Output Schema
+
+`shared-hooks/session-start.py` is consumed by hosts with **different sessionStart output schemas**. It must emit both shapes so every host reads the context it expects:
+
+```python
+{
+    # Claude / Gemini / Qoder / CodeBuddy / Droid / Copilot — nested camelCase
+    "hookSpecificOutput": {
+        "hookEventName": "SessionStart",
+        "additionalContext": context_text,
+    },
+    # Cursor — top-level snake_case per cursor.com/docs/agent/hooks
+    "additional_context": context_text,
+}
+```
+
+Each host ignores keys it does not recognize, so dual emission is safe. **Do not refactor to single-format output** — dropping the Cursor key breaks Cursor's auto-context injection for all models (not just GPT). The same multi-format convention exists in `inject-subagent-context.py` (Cursor's `permission` + `updated_input` alongside Claude's `hookSpecificOutput`).
 
 ### Constraint
 
@@ -1335,7 +1403,7 @@ The same rule applies to every other hook that's positioned as "repeated reminde
 | Platform | Event | Config File | Notes |
 |---|---|---|---|
 | Claude Code | `UserPromptSubmit` | `.claude/settings.json` | Auto-distributes via `writeSharedHooks()` |
-| Cursor | `sessionStart` | `.cursor/hooks.json` | Auto; Cursor does not wire `beforeSubmitPrompt` because that schema cannot inject arbitrary context |
+| Cursor | ⚠️ Not supported | n/a | Cursor's `beforeSubmitPrompt` schema accepts only `{continue, user_message}` — no context-injection field exists. Per-turn reminders rely on `sessionStart` only (one-shot at session begin). `inject-workflow-state.py` is not distributed to Cursor; see `SHARED_HOOKS_BY_PLATFORM.cursor` in `shared-hooks/index.ts`. |
 | Qoder | `UserPromptSubmit` | `.qoder/settings.json` | Auto |
 | CodeBuddy | `UserPromptSubmit` | `.codebuddy/settings.json` | Auto |
 | Droid (Factory) | `UserPromptSubmit` | `.factory/settings.json` | Auto |

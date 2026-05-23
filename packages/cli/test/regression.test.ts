@@ -1677,6 +1677,105 @@ describe("regression: current-task path normalization", () => {
     expect(fs.existsSync(contextOther)).toBe(true);
   });
 
+  it("[task-lifecycle] task.py create refuses an archived task dir-name collision", () => {
+    writeTrellisScripts();
+    writeProjectFile(
+      path.join(".trellis", ".developer"),
+      "name=test-dev\ninitialized_at=2026-03-27T00:00:00\n",
+    );
+    writeProjectFile(path.join(".trellis", "workflow.md"), "# Workflow\n");
+    fs.mkdirSync(path.join(tmpDir, ".claude"), { recursive: true });
+
+    const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
+    const createArgs = [
+      taskScriptPath,
+      "create",
+      "web auth retry",
+      "--slug",
+      "web-auth-retry",
+      "--assignee",
+      "test-dev",
+    ];
+    const env = sessionEnv({ TRELLIS_CONTEXT_ID: "archive-collision" });
+
+    execSync(
+      `${pythonCmd} ${createArgs.map((arg) => JSON.stringify(arg)).join(" ")}`,
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env,
+      },
+    );
+
+    const tasksDir = path.join(tmpDir, ".trellis", "tasks");
+    const taskDirName = fs
+      .readdirSync(tasksDir)
+      .find((entry) => entry.endsWith("-web-auth-retry"));
+    expect(taskDirName).toBeDefined();
+    const activeTaskDir = path.join(tasksDir, taskDirName as string);
+    fs.writeFileSync(path.join(activeTaskDir, "prd.md"), "# PRD\n", "utf-8");
+
+    execSync(
+      `${pythonCmd} ${JSON.stringify(taskScriptPath)} archive ${JSON.stringify(taskDirName)} --no-commit`,
+      {
+        cwd: tmpDir,
+        encoding: "utf-8",
+        env,
+      },
+    );
+
+    const archiveRoot = path.join(tasksDir, "archive");
+    let archivedTaskDir: string | undefined;
+    for (const monthDir of fs.readdirSync(archiveRoot)) {
+      const candidate = path.join(archiveRoot, monthDir, taskDirName as string);
+      if (fs.existsSync(candidate)) {
+        archivedTaskDir = candidate;
+      }
+    }
+    expect(archivedTaskDir).toBeDefined();
+    const archivedTaskJsonPath = path.join(
+      archivedTaskDir as string,
+      "task.json",
+    );
+    const archivedPrdPath = path.join(archivedTaskDir as string, "prd.md");
+    const archivedTaskJsonBefore = fs.readFileSync(archivedTaskJsonPath, "utf-8");
+    const archivedPrdBefore = fs.readFileSync(archivedPrdPath, "utf-8");
+    const archivedTaskJson = JSON.parse(archivedTaskJsonBefore) as {
+      status: string;
+      completedAt: string | null;
+    };
+    expect(archivedTaskJson.status).toBe("completed");
+    expect(archivedTaskJson.completedAt).not.toBeNull();
+
+    const contextPath = path.join(
+      tmpDir,
+      ".trellis",
+      ".runtime",
+      "sessions",
+      "archive-collision.json",
+    );
+    expect(fs.existsSync(contextPath)).toBe(false);
+
+    const result = spawnSync(pythonCmd, createArgs, {
+      cwd: tmpDir,
+      encoding: "utf-8",
+      env,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Task already archived");
+    expect(result.stderr).toContain(taskDirName as string);
+    expect(result.stderr).toContain(".trellis/tasks/archive/");
+    expect(fs.existsSync(path.join(tasksDir, taskDirName as string))).toBe(
+      false,
+    );
+    expect(fs.readFileSync(archivedTaskJsonPath, "utf-8")).toBe(
+      archivedTaskJsonBefore,
+    );
+    expect(fs.readFileSync(archivedPrdPath, "utf-8")).toBe(archivedPrdBefore);
+    expect(fs.existsSync(contextPath)).toBe(false);
+  });
+
   it("[task-input-contract] task.py archive accepts task name, relative path, and absolute path", () => {
     setupTaskRepo();
     const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
@@ -5095,7 +5194,7 @@ describe("regression: pi uses TypeScript extension assets instead of Python hook
       path.join(tmpDir, ".pi", "extensions", "trellis", "index.ts"),
       "utf-8",
     );
-    expect(extension).toContain('name: "subagent"');
+    expect(extension).toContain('name: "trellis_subagent"');
     expect(extension).toContain('pi.on?.("before_agent_start"');
     expect(extension).toContain('pi.on?.("tool_call"');
 
@@ -5560,6 +5659,15 @@ describe("regression: sub-agent context injection fallback (0.5.3)", () => {
   const __dirnameFb = path.dirname(fileURLToPath(import.meta.url));
   const repoRootFb = path.resolve(__dirnameFb, "../../..");
 
+  function expectTaskArtifactContract(content: string): void {
+    expect(content).toContain("prd.md");
+    expect(content).toContain("design.md");
+    expect(content).toContain("implement.md");
+    expect(content).not.toMatch(/prd\.md`?\s+(?:if present|if exists)/i);
+    expect(content).toMatch(/design\.md[^\n.]*(?:if present|if exists)/i);
+    expect(content).toMatch(/implement\.md[^\n.]*(?:if present|if exists)/i);
+  }
+
   for (const { platform, rel, agent } of CLASS1_MD_AGENT_FILES) {
     it(`${platform}/${agent} markdown agent file carries marker + fallback protocol`, () => {
       const content = fs.readFileSync(path.join(repoRootFb, rel), "utf-8");
@@ -5570,7 +5678,7 @@ describe("regression: sub-agent context injection fallback (0.5.3)", () => {
       // 3. Tells AI how to find the active task path
       expect(content).toContain("Active task:");
       // 4. Tells AI which task files to Read in fallback path
-      expect(content).toContain("prd.md");
+      expectTaskArtifactContract(content);
       const expectedJsonl = agent === "implement" ? "implement.jsonl" : "check.jsonl";
       expect(content).toContain(expectedJsonl);
     });
@@ -5588,9 +5696,33 @@ describe("regression: sub-agent context injection fallback (0.5.3)", () => {
       expect(prompt).toContain(HOOK_INJECTED_MARKER);
       expect(prompt).toContain("Trellis Context Loading Protocol");
       expect(prompt).toContain("Active task:");
-      expect(prompt).toContain("prd.md");
+      expectTaskArtifactContract(prompt);
       const expectedJsonl = agent === "implement" ? "implement.jsonl" : "check.jsonl";
       expect(prompt).toContain(expectedJsonl);
+    });
+  }
+
+  const GEMINI_QODER_AGENT_FILES = [
+    "packages/cli/src/templates/gemini/agents/trellis-implement.md",
+    "packages/cli/src/templates/gemini/agents/trellis-check.md",
+    "packages/cli/src/templates/qoder/agents/trellis-implement.md",
+    "packages/cli/src/templates/qoder/agents/trellis-check.md",
+  ];
+
+  for (const rel of GEMINI_QODER_AGENT_FILES) {
+    it(`${rel} references task artifacts`, () => {
+      const content = fs.readFileSync(path.join(repoRootFb, rel), "utf-8");
+      expectTaskArtifactContract(content);
+    });
+  }
+
+  for (const agent of ["implement", "check"] as const) {
+    it(`pi/${agent} agent references task artifacts`, () => {
+      const content = fs.readFileSync(
+        path.join(repoRootFb, `packages/cli/src/templates/pi/agents/trellis-${agent}.md`),
+        "utf-8",
+      );
+      expectTaskArtifactContract(content);
     });
   }
 

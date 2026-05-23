@@ -1,54 +1,44 @@
-import fs from "node:fs";
+import {
+  parseDeliveryMode,
+  sendMessage as coreSendMessage,
+  type ChannelScope,
+} from "@mindfoldhq/trellis-core/channel";
 
-import { appendEvent } from "./store/events.js";
-import { selectExistingChannelProject } from "./store/paths.js";
+import { parseChannelScope, parseCsv } from "./store/schema.js";
+import { resolveChannelTextBody } from "./text-body.js";
 
 export interface SendOptions {
   as: string;
   text?: string;
   stdin?: boolean;
   textFile?: string;
-  kind?: string; // tag
+  scope?: string;
   to?: string; // CSV
-}
-
-async function readText(opts: SendOptions): Promise<string> {
-  if (opts.text !== undefined && opts.text !== "") return opts.text;
-  if (opts.textFile) return fs.readFileSync(opts.textFile, "utf-8");
-  if (opts.stdin) {
-    return await new Promise<string>((resolve) => {
-      let buf = "";
-      process.stdin.on(
-        "data",
-        (chunk: Buffer) => (buf += chunk.toString("utf-8")),
-      );
-      process.stdin.on("end", () => resolve(buf));
-    });
-  }
-  throw new Error("No text provided (use <text> arg, --stdin, or --text-file)");
+  deliveryMode?: string;
 }
 
 export async function channelSend(
   channelName: string,
   opts: SendOptions,
 ): Promise<void> {
-  selectExistingChannelProject(channelName);
-  const text = (await readText(opts)).trimEnd();
-  if (!text) throw new Error("Empty message");
+  const text = await resolveChannelTextBody(opts, {
+    required: true,
+    missingMessage:
+      "No text provided (use <text> arg, --stdin, or --text-file)",
+    emptyMessage: "Empty message",
+  });
+  const to = parseCsv(opts.to);
+  const scope: ChannelScope | undefined = parseChannelScope(opts.scope);
+  const deliveryMode = parseDeliveryMode(opts.deliveryMode);
 
-  const to = opts.to
-    ? opts.to
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean)
-    : undefined;
-
-  const event = await appendEvent(channelName, {
-    kind: "message",
+  const event = await coreSendMessage({
+    channel: channelName,
     by: opts.as,
-    text,
-    ...(opts.kind ? { tag: opts.kind } : {}),
-    ...(to ? { to: to.length === 1 ? to[0] : to } : {}),
+    text: text as string,
+    ...(scope !== undefined ? { scope } : {}),
+    ...(to !== undefined ? { to: to.length === 1 ? to[0] : to } : {}),
+    ...(deliveryMode !== undefined ? { deliveryMode } : {}),
+    origin: "cli",
   });
   console.log(JSON.stringify(event));
 }

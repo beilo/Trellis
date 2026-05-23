@@ -17,12 +17,20 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Readable, Writable } from "node:stream";
 
+import {
+  DEFAULT_INBOX_POLICY,
+  type InboxPolicy,
+} from "@mindfoldhq/trellis-core/channel";
+
 import { getAdapter, type Provider } from "./adapters/index.js";
 import { appendEvent } from "./store/events.js";
 import { workerFile } from "./store/paths.js";
+import { scheduleSupervisorIdleTimer } from "./supervisor/idle.js";
 import { runInboxWatcher } from "./supervisor/inbox.js";
-import { createShutdown } from "./supervisor/shutdown.js";
+import { createShutdown, type ShutdownReason } from "./supervisor/shutdown.js";
 import { startStdoutPump } from "./supervisor/stdout.js";
+import { TurnTracker } from "./supervisor/turns.js";
+import { scheduleSupervisorTimeoutWarning } from "./supervisor/warning.js";
 
 export interface SupervisorConfig {
   provider: Provider;
@@ -40,6 +48,14 @@ export interface SupervisorConfig {
   resume?: string;
   /** Auto-kill worker after this many ms (anti-zombie). */
   timeoutMs?: number;
+  /** Emit supervisor_warning this many ms before timeout. `<=0` disables it. */
+  warnBeforeMs?: number;
+  /**
+   * OOM-guard idle-cleanup TTL in ms. When a running worker stays idle
+   * for this long (no active turn), the supervisor self-terminates with
+   * `killed{reason:"idle-timeout"}`. `<=0` or undefined disables.
+   */
+  idleTimeoutMs?: number;
   /** Caller identity recorded on the `spawned` event (default "main"). */
   spawnedBy?: string;
   /** Agent definition name loaded for this worker, if any (recorded on `spawned`). */
@@ -50,6 +66,9 @@ export interface SupervisorConfig {
    *  (recorded on `spawned` for observability — "I passed --jsonl X but
    *  X contained no real entries"). */
   contextManifests?: string[];
+  /** Worker inbox delivery policy (recorded on `spawned`; default
+   *  `explicitOnly`). */
+  inboxPolicy?: InboxPolicy;
 }
 
 type Child = ChildProcessByStdio<Writable, Readable, Readable>;
@@ -67,8 +86,9 @@ export async function runSupervisor(
   const config = readConfig(configPath);
 
   // Self-pid file lets `trellis channel kill` find us.
+  const project = process.env.TRELLIS_CHANNEL_PROJECT;
   fs.writeFileSync(
-    workerFile(channelName, workerName, "pid"),
+    workerFile(channelName, workerName, "pid", project),
     String(process.pid),
   );
 
@@ -91,7 +111,7 @@ export async function runSupervisor(
     TRELLIS_CHANNEL_AS: workerName,
   };
 
-  const logPath = workerFile(channelName, workerName, "log");
+  const logPath = workerFile(channelName, workerName, "log", project);
   const log = fs.createWriteStream(logPath);
   log.write(`[supervisor] starting ${adapter.provider} ${args.join(" ")}\n`);
 
@@ -112,6 +132,9 @@ export async function runSupervisor(
     getChild: () => child,
     graceMs: SHUTDOWN_GRACE_MS,
     timeoutMs: config.timeoutMs,
+    ...(config.idleTimeoutMs !== undefined
+      ? { idleTimeoutMs: config.idleTimeoutMs }
+      : {}),
   });
 
   // Gate the `spawned` event behind whichever child lifecycle event fires
@@ -150,12 +173,16 @@ export async function runSupervisor(
       settleSpawn();
       void (async () => {
         try {
-          await appendEvent(channelName, {
-            kind: "error",
-            by: `supervisor:${workerName}`,
-            message: `worker spawn failed: ${err.message}`,
-            provider: config.provider,
-          });
+          await appendEvent(
+            channelName,
+            {
+              kind: "error",
+              by: `supervisor:${workerName}`,
+              message: `worker spawn failed: ${err.message}`,
+              provider: config.provider,
+            },
+            project,
+          );
         } catch {
           // ignore — we're exiting anyway
         }
@@ -175,12 +202,16 @@ export async function runSupervisor(
     shutdown.claim("crash");
     void (async () => {
       try {
-        await appendEvent(channelName, {
-          kind: "error",
-          by: `supervisor:${workerName}`,
-          message: `worker process error: ${err.message}`,
-          provider: config.provider,
-        });
+        await appendEvent(
+          channelName,
+          {
+            kind: "error",
+            by: `supervisor:${workerName}`,
+            message: `worker process error: ${err.message}`,
+            provider: config.provider,
+          },
+          project,
+        );
       } catch {
         // ignore
       }
@@ -203,10 +234,12 @@ export async function runSupervisor(
   // arriving during the spawn-settle / spawned-append window funnels
   // into `shutdown.request` instead of using Node's default behaviour
   // (which would orphan the child and skip the `killed` event).
-  process.on(
-    "SIGTERM",
-    () => void shutdown.request("SIGTERM", "explicit-kill"),
-  );
+  process.on("SIGTERM", () => {
+    void shutdown.request(
+      "SIGTERM",
+      readExternalShutdownReason(channelName, workerName, project),
+    );
+  });
   process.on("SIGINT", () => void shutdown.request("SIGINT", "explicit-kill"));
   // SIGHUP arrives when the parent terminal closes — without this
   // handler Node's default behaviour exits the supervisor before the
@@ -228,24 +261,45 @@ export async function runSupervisor(
   }
 
   fs.writeFileSync(
-    workerFile(channelName, workerName, "worker-pid"),
+    workerFile(channelName, workerName, "worker-pid", project),
     String(child.pid),
   );
 
-  await appendEvent(channelName, {
-    kind: "spawned",
-    by: config.spawnedBy ?? "main",
-    as: workerName,
-    provider: config.provider,
-    pid: child.pid,
-    ...(config.agent ? { agent: config.agent } : {}),
-    ...(config.contextFiles && config.contextFiles.length > 0
-      ? { files: config.contextFiles }
-      : {}),
-    ...(config.contextManifests && config.contextManifests.length > 0
-      ? { manifests: config.contextManifests }
-      : {}),
+  await appendEvent(
+    channelName,
+    {
+      kind: "spawned",
+      by: config.spawnedBy ?? "main",
+      as: workerName,
+      provider: config.provider,
+      pid: child.pid,
+      inboxPolicy: config.inboxPolicy ?? DEFAULT_INBOX_POLICY,
+      ...(config.agent ? { agent: config.agent } : {}),
+      ...(config.contextFiles && config.contextFiles.length > 0
+        ? { files: config.contextFiles }
+        : {}),
+      ...(config.contextManifests && config.contextManifests.length > 0
+        ? { manifests: config.contextManifests }
+        : {}),
+    },
+    project,
+  );
+
+  // OOM-guard idle timer: start only after `spawned` is durable. Hooks
+  // wired through the TurnTracker pause it mid-turn and reset it on
+  // turn finish / interrupted (the same transitions that drive durable
+  // `idleSince`). `<=0` short-circuits the timer to a no-op.
+  const idleTimer = scheduleSupervisorIdleTimer({
+    idleTimeoutMs: config.idleTimeoutMs ?? 0,
+    shutdown,
+    isChildExited: () => child.exitCode !== null || child.signalCode !== null,
+    log,
   });
+  const turnTracker = new TurnTracker({
+    onIdleExit: () => idleTimer.pause(),
+    onIdleEnter: () => idleTimer.reset(),
+  });
+  process.on("exit", () => idleTimer.cancel());
 
   // ── 1. stdout reader ──
   startStdoutPump({
@@ -256,6 +310,7 @@ export async function runSupervisor(
     adapterCtx,
     log,
     shutdown,
+    turnTracker,
   });
 
   // ── timeout guard (anti-zombie) ──
@@ -268,6 +323,20 @@ export async function runSupervisor(
       // no need to emit a separate one here.
       void shutdown.request("SIGTERM", "timeout");
     }, config.timeoutMs).unref();
+
+    // Fire-and-forget pre-timeout observability warning. One-shot, guarded
+    // by shutdown/terminal/exit state so it stays quiet once the worker is
+    // already on its way out.
+    scheduleSupervisorTimeoutWarning({
+      channelName,
+      workerName,
+      timeoutMs: config.timeoutMs,
+      warnBeforeMs: config.warnBeforeMs,
+      shutdown,
+      isChildExited: () => child.exitCode !== null || child.signalCode !== null,
+      log,
+      project,
+    });
   }
 
   // ── 3. inbox watcher ──
@@ -283,6 +352,8 @@ export async function runSupervisor(
     ctx: adapterCtx,
     child,
     signal: abort.signal,
+    inboxPolicy: config.inboxPolicy ?? DEFAULT_INBOX_POLICY,
+    turnTracker,
   });
 
   // ── adapter handshake (no initial user prompt) ──
@@ -297,13 +368,17 @@ export async function runSupervisor(
       // `killed{reason:"crash"}` with no detail on what went wrong.
       void (async () => {
         try {
-          await appendEvent(channelName, {
-            kind: "error",
-            by: `supervisor:${workerName}`,
-            message: `handshake failed: ${msg}`,
-            provider: config.provider,
-            detail: { source: "handshake" },
-          });
+          await appendEvent(
+            channelName,
+            {
+              kind: "error",
+              by: `supervisor:${workerName}`,
+              message: `handshake failed: ${msg}`,
+              provider: config.provider,
+              detail: { source: "handshake" },
+            },
+            project,
+          );
         } catch {
           // ignore
         }
@@ -321,13 +396,43 @@ async function cleanup(channelName: string, workerName: string): Promise<void> {
   // Keep `log` (forensic), `session-id` / `thread-id` (future resume).
   // `inbox-cursor` is kept so a respawn (same worker name without
   // killing the channel) doesn't replay messages.
-  for (const suffix of ["pid", "worker-pid", "config", "spawnlock"]) {
+  for (const suffix of [
+    "pid",
+    "worker-pid",
+    "config",
+    "spawnlock",
+    "shutdown-reason",
+    "reservation",
+  ]) {
     try {
-      fs.unlinkSync(workerFile(channelName, workerName, suffix));
+      fs.unlinkSync(
+        workerFile(
+          channelName,
+          workerName,
+          suffix,
+          process.env.TRELLIS_CHANNEL_PROJECT,
+        ),
+      );
     } catch {
       // already gone
     }
   }
+}
+
+function readExternalShutdownReason(
+  channelName: string,
+  workerName: string,
+  project?: string,
+): ShutdownReason {
+  const file = workerFile(channelName, workerName, "shutdown-reason", project);
+  try {
+    const reason = fs.readFileSync(file, "utf-8").trim();
+    fs.unlinkSync(file);
+    if (reason === "idle-timeout") return "idle-timeout";
+  } catch {
+    // No sidecar: ordinary external SIGTERM remains an explicit kill.
+  }
+  return "explicit-kill";
 }
 
 function readConfig(p: string): SupervisorConfig {
@@ -339,8 +444,9 @@ export function writeSupervisorConfig(
   channelName: string,
   workerName: string,
   config: SupervisorConfig,
+  project?: string,
 ): string {
-  const p = workerFile(channelName, workerName, "config");
+  const p = workerFile(channelName, workerName, "config", project);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, JSON.stringify(config, null, 2), "utf-8");
   return p;

@@ -784,3 +784,307 @@ Built the trellis channel command tree: 11 subcommands, claude/codex worker adap
 ### Next Steps
 
 - None - task complete
+
+
+## Session 159: Core mem and forum channels
+
+**Date**: 2026-05-14
+**Task**: Core mem and forum channels
+**Branch**: `feat/v0.6.0-beta`
+
+### Summary
+
+Added the @mindfoldhq/trellis-core/mem subpath API, converted trellis mem into a CLI wrapper, renamed channel thread-board commands to forum terminology, updated specs, and passed Trellis check review.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3e53e17` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 160: Align Agent Artifacts
+
+**Date**: 2026-05-15
+**Task**: Align Agent Artifacts
+**Branch**: `feat/v0.6.0-beta`
+
+### Summary
+
+Aligned platform check agent templates with the task artifact contract, added optional-artifact regression coverage, and verified the beta templates with focused/full regression tests and typecheck.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fb7a4ed` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 161: Workflow marketplace switcher
+
+**Date**: 2026-05-15
+**Task**: Workflow marketplace switcher
+**Branch**: `feat/v0.6.0-beta`
+
+### Summary
+
+Implemented workflow marketplace templates and trellis workflow switching, documented the workflow command/update hash contract, and archived the workflow marketplace task.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5c27923` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 162: Channel wait supervisor warnings
+
+**Date**: 2026-05-15
+**Task**: Channel wait supervisor warnings
+**Branch**: `feat/v0.6.0-beta`
+
+### Summary
+
+Implemented channel wait kind unions and supervisor pre-timeout warning events; split worker inbox API into a follow-up child task; updated channel command spec and tests.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d2e72268` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 163: Worker inbox core API
+
+**Date**: 2026-05-15
+**Task**: Worker inbox core API
+**Branch**: `feat/v0.6.0-beta`
+
+### Summary
+
+Added the core worker inbox read/watch API, documented generation-boundary semantics, covered inbox routing and limit edge cases, and completed channel-driven check review.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `86f98938` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 164: Fix Cursor sessionStart context injection
+
+**Date**: 2026-05-15
+**Task**: Fix Cursor sessionStart context injection
+**Branch**: `feat/v0.6.0-beta`
+
+### Summary
+
+Cursor's sessionStart expects top-level additional_context, not Claude's nested hookSpecificOutput.additionalContext — the schema mismatch caused all Cursor models (including GPT) to silently miss Trellis context. Shared session-start.py now dual-emits both fields. Also dropped the no-op beforeSubmitPrompt → inject-workflow-state.py registration for Cursor (Cursor's beforeSubmitPrompt schema accepts only continue/user_message; per-turn context injection is impossible on Cursor by design). Spec updated to capture both the support-matrix change and the dual-format output contract.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `98339802` | (see git log) |
+| `d7491ed2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 165: Channel Worker OOM Guard
+
+**Date**: 2026-05-17
+**Task**: Channel Worker OOM Guard
+**Branch**: `feat/v0.6.0-beta`
+
+### Summary
+
+Added default idle cleanup and live-worker budget controls for channel workers, with config/env/CLI overrides, supervisor idle termination, core idle projection, tests, and channel command spec updates.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e7d626b0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 166: Core Channel Durable Idempotency
+
+**Date**: 2026-05-17
+**Task**: Core Channel Durable Idempotency
+**Branch**: `feat/v0.6.0-beta`
+
+### Summary
+
+Added durable idempotency keys to core channel send/thread writes, documented the event-log contract, verified with channel check workers, build, and dist-based real JSONL tests.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b645447e` | (see git log) |
+| `399ef98f` | (see git log) |
+| `f301155f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 167: Bundle spec bootstrap skill
+
+**Date**: 2026-05-19
+**Task**: Bundle spec bootstrap skill
+**Branch**: `feat/v0.6.0-beta`
+
+### Summary
+
+Investigated why v0.6.0-beta.18/19 did not install trellis-spec-bootstarp after trellis init. Ported the bundled spec bootstrap skill into the beta CLI templates, added init/update tracking tests, verified the built CLI through npm pack dry-run and a fresh temp-directory init/update smoke test, documented release artifact smoke-test requirements, updated docs-site changelog notes for Codex timeout bounds, and committed Trellis local platform/template refreshes in separate batches.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6a8a9049` | (see git log) |
+| `99f87d1c` | (see git log) |
+| `3a296287` | (see git log) |
+| `247d85c1` | (see git log) |
+| `8bed2de5` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

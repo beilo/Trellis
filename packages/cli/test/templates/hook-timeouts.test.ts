@@ -98,8 +98,9 @@ const PLATFORM_HOOK_CONFIGS = [
     unit: "s",
   },
   {
-    // Cursor 的 beforeSubmitPrompt schema 只能返回 `{continue, user_message}`，
-    // 不能注入任意上下文，所以 Cursor 只依赖 sessionStart。
+    // Cursor's beforeSubmitPrompt schema accepts only `{continue, user_message}`
+    // — it cannot inject context. The per-turn workflow-state hook is therefore
+    // not wired for Cursor; only sessionStart carries Trellis context.
     platform: "cursor",
     path: "cursor/hooks.json",
     schema: "flat",

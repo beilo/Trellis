@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 158
-- **Last Active**: 2026-05-12
+- **Total Sessions**: 167
+- **Last Active**: 2026-05-19
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~786 | Active |
+| `journal-5.md` | ~1090 | Active |
 | `journal-4.md` | ~1975 | Archived |
 | `journal-3.md` | ~1988 | Archived |
 | `journal-2.md` | ~1963 | Archived |
@@ -33,6 +33,15 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 167 | 2026-05-19 | Bundle spec bootstrap skill | `6a8a9049`, `99f87d1c`, `3a296287`, `247d85c1`, `8bed2de5` | `feat/v0.6.0-beta` |
+| 166 | 2026-05-17 | Core Channel Durable Idempotency | `b645447e`, `399ef98f`, `f301155f` | `feat/v0.6.0-beta` |
+| 165 | 2026-05-17 | Channel Worker OOM Guard | `e7d626b0` | `feat/v0.6.0-beta` |
+| 164 | 2026-05-15 | Fix Cursor sessionStart context injection | `98339802`, `d7491ed2` | `feat/v0.6.0-beta` |
+| 163 | 2026-05-15 | Worker inbox core API | `86f98938` | `feat/v0.6.0-beta` |
+| 162 | 2026-05-15 | Channel wait supervisor warnings | `d2e72268` | `feat/v0.6.0-beta` |
+| 161 | 2026-05-15 | Workflow marketplace switcher | `5c27923` | `feat/v0.6.0-beta` |
+| 160 | 2026-05-15 | Align Agent Artifacts | `fb7a4ed` | `feat/v0.6.0-beta` |
+| 159 | 2026-05-14 | Core mem and forum channels | `3e53e17` | `feat/v0.6.0-beta` |
 | 158 | 2026-05-12 | Trellis Channel Runtime — multi-agent collaboration layer | `a2d3c83`, `7608c30`, `dab8e57`, `f5681a4` | `feat/v0.6.0-beta` |
 | 157 | 2026-05-11 | Harden trellis upgrade execution | `aa54b45` | `feat/v0.6.0-beta` |
 | 156 | 2026-05-10 | Task artifact routing gates | `f01c772` | `feat/v0.6.0-beta` |

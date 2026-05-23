@@ -10,7 +10,12 @@ import path from "node:path";
 
 import chalk from "chalk";
 
-import type { ChannelEvent } from "./store/events.js";
+import {
+  isCreateEvent,
+  reduceChannelMetadata,
+  type ChannelEvent,
+  type CreateChannelEvent,
+} from "./store/events.js";
 import {
   channelDir,
   currentProjectKey,
@@ -18,6 +23,7 @@ import {
   migrateLegacyChannels,
   projectDir,
 } from "./store/paths.js";
+import { GLOBAL_PROJECT_KEY, parseChannelScope } from "./store/schema.js";
 
 interface ChannelSummary {
   name: string;
@@ -32,6 +38,8 @@ interface ChannelSummary {
   lastEventKind?: string;
   totalEvents: number;
   ephemeral: boolean;
+  type: string;
+  description?: string;
 }
 
 export interface ListOptions {
@@ -41,6 +49,7 @@ export interface ListOptions {
   all?: boolean;
   /** Scan every project bucket, not just the current cwd's. */
   allProjects?: boolean;
+  scope?: string;
 }
 
 export async function channelList(opts: ListOptions = {}): Promise<void> {
@@ -48,7 +57,13 @@ export async function channelList(opts: ListOptions = {}): Promise<void> {
   // so the new layout is the authoritative view.
   migrateLegacyChannels();
 
-  const projects = opts.allProjects ? listProjects() : [currentProjectKey()];
+  const scope = parseChannelScope(opts.scope);
+  const projects =
+    scope === "global"
+      ? [GLOBAL_PROJECT_KEY]
+      : opts.allProjects
+        ? listProjects()
+        : [currentProjectKey()];
 
   const summaries: ChannelSummary[] = [];
   for (const project of projects) {
@@ -125,28 +140,26 @@ function summarize(name: string, project: string): ChannelSummary | null {
   // Read events to find: createdAt + task, last event ts/kind, total
   // count. Channels stay small (no auto-rotation; ~few MB at worst), so
   // a single full readFile per `list` invocation is fine.
-  let firstEvent: ChannelEvent | null = null;
+  let firstEvent: CreateChannelEvent | null = null;
   let lastEvent: ChannelEvent | null = null;
   let totalEvents = 0;
+  const events: ChannelEvent[] = [];
 
   try {
-    // Single read — chop first / last lines out of one buffer. Avoids
-    // the previous double-read (head 8KB + whole file) which doubled
-    // syscall cost on every list call.
     const allText = fs.readFileSync(eventsFile, "utf-8");
     const lines = allText.split("\n").filter((l) => l.trim());
     totalEvents = lines.length;
-    if (lines.length > 0) {
+    for (const line of lines) {
       try {
-        firstEvent = JSON.parse(lines[0]) as ChannelEvent;
+        events.push(JSON.parse(line) as ChannelEvent);
       } catch {
-        // ignore
+        // skip corrupted lines
       }
-      try {
-        lastEvent = JSON.parse(lines[lines.length - 1]) as ChannelEvent;
-      } catch {
-        // ignore
-      }
+    }
+    if (events.length > 0) {
+      const first = events[0];
+      firstEvent = isCreateEvent(first) ? first : null;
+      lastEvent = events[events.length - 1];
     }
   } catch {
     return null;
@@ -168,19 +181,22 @@ function summarize(name: string, project: string): ChannelSummary | null {
     // ignore
   }
 
+  // Use the full event-stream reducer so projected metadata reflects
+  // title set/clear, context add/delete, and legacy linkedContext.
+  const metadata = reduceChannelMetadata(events);
   return {
     name,
     project,
     createdAt: firstEvent?.ts,
-    task: firstEvent ? (firstEvent as { task?: string }).task : undefined,
+    task: firstEvent?.task,
+    type: metadata.type,
+    description: metadata.title ?? metadata.description,
     workersAlive,
     workersTotal,
     lastEventTs: lastEvent?.ts,
     lastEventKind: lastEvent?.kind,
     totalEvents,
-    ephemeral:
-      firstEvent !== null &&
-      (firstEvent as { ephemeral?: boolean }).ephemeral === true,
+    ephemeral: firstEvent?.ephemeral === true,
   };
 }
 
@@ -200,6 +216,7 @@ function printTable(rows: ChannelSummary[]): void {
     { key: "events", label: "EVENTS", width: 7 },
     { key: "last", label: "LAST", width: 19 },
     { key: "kind", label: "KIND", width: 9 },
+    { key: "type", label: "TYPE", width: 7 },
     { key: "task", label: "TASK", width: 0 }, // last column, no truncate
   ];
 
@@ -225,7 +242,7 @@ function printTable(rows: ChannelSummary[]): void {
       ? r.lastEventTs.slice(0, 19).replace("T", " ")
       : "-";
     const kind = colorKind(r.lastEventKind);
-    const task = r.task ? trunc(r.task, 60) : "-";
+    const task = r.task ?? r.description ?? "-";
 
     console.log(
       [
@@ -235,6 +252,7 @@ function printTable(rows: ChannelSummary[]): void {
         events.padEnd(cols[2].width),
         last.padEnd(cols[3].width),
         padVisible(kind, cols[4].width),
+        r.type.padEnd(cols[5].width),
         task,
       ].join("  "),
     );

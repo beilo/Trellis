@@ -23,6 +23,8 @@ import { VERSION } from "../constants/version.js";
 import { agentsMdContent } from "../templates/markdown/index.js";
 import {
   setWriteMode,
+  startRecordingWrites,
+  stopRecordingWrites,
   writeFile,
   type WriteMode,
 } from "../utils/file-writer.js";
@@ -34,7 +36,16 @@ import {
   type ProjectType,
   type DetectedPackage,
 } from "../utils/project-detector.js";
-import { initializeHashes } from "../utils/template-hash.js";
+import { initializeHashes, removeHash } from "../utils/template-hash.js";
+import {
+  NATIVE_WORKFLOW_ID,
+  resolveWorkflowTemplate,
+} from "../utils/workflow-resolver.js";
+import {
+  isCwdHomedir,
+  homedirGuardMessage,
+  homedirBypassEnabled,
+} from "../utils/cwd-guard.js";
 import {
   fetchTemplateIndex,
   probeRegistryIndex,
@@ -826,26 +837,35 @@ async function handleReinit(
       }
     }
 
-    for (const tool of platformsToAdd) {
-      const platformId = resolveCliFlag(tool as CliFlag);
-      if (platformId) {
-        if (configuredPlatforms.has(platformId)) {
-          console.log(
-            chalk.gray(
-              `  ○ ${AI_TOOLS[platformId].name} already configured, skipping`,
-            ),
-          );
-        } else {
-          console.log(
-            chalk.blue(`📝 Configuring ${AI_TOOLS[platformId].name}...`),
-          );
-          await configurePlatform(platformId, cwd);
+    const reinitWritten = startRecordingWrites(cwd);
+    try {
+      for (const tool of platformsToAdd) {
+        const platformId = resolveCliFlag(tool as CliFlag);
+        if (platformId) {
+          if (configuredPlatforms.has(platformId)) {
+            console.log(
+              chalk.gray(
+                `  ○ ${AI_TOOLS[platformId].name} already configured, skipping`,
+              ),
+            );
+          } else {
+            console.log(
+              chalk.blue(`📝 Configuring ${AI_TOOLS[platformId].name}...`),
+            );
+            await configurePlatform(platformId, cwd);
+          }
         }
       }
+    } finally {
+      stopRecordingWrites();
     }
 
-    // Update template hashes
-    const hashedCount = initializeHashes(cwd);
+    // Update template hashes. Merge mode: preserve previously-tracked
+    // platforms' hashes, layer in the newly-added platform's writes.
+    const hashedCount = initializeHashes(cwd, {
+      trackedPaths: reinitWritten,
+      merge: true,
+    });
     if (hashedCount > 0) {
       console.log(
         chalk.gray(`📋 Tracking ${hashedCount} template files for updates`),
@@ -935,6 +955,8 @@ interface InitOptions {
   append?: boolean;
   registry?: string;
   monorepo?: boolean;
+  workflow?: string;
+  workflowSource?: string;
 }
 
 // Compile-time check: every CliFlag must be a key of InitOptions.
@@ -997,6 +1019,14 @@ interface InitAnswers {
 }
 
 export async function init(options: InitOptions): Promise<void> {
+  // Refuse to run in $HOME — running here would scoop platform runtime data
+  // (Claude/Codex/OpenCode session histories etc.) into the trellis hash
+  // manifest, and a subsequent `trellis uninstall` would wipe it.
+  if (isCwdHomedir() && !homedirBypassEnabled()) {
+    console.error(chalk.red(homedirGuardMessage("init")));
+    process.exit(1);
+  }
+
   const cwd = process.cwd();
   const isFirstInit = !fs.existsSync(path.join(cwd, DIR_NAMES.WORKFLOW));
   // Captured here (before createWorkflowStructure + init_developer run) so
@@ -1724,54 +1754,97 @@ export async function init(options: InitOptions): Promise<void> {
   }
 
   // ==========================================================================
-  // Create Workflow Structure
+  // Resolve workflow template (default: native bundled)
   // ==========================================================================
 
-  // Create workflow structure with project type
-  console.log(chalk.blue("📁 Creating workflow structure..."));
-  await createWorkflowStructure(cwd, {
-    projectType,
-    skipSpecTemplates: useRemoteTemplate,
-    packages: monorepoPackages,
-    remoteSpecPackages,
-  });
-
-  // Write monorepo packages to config.yaml (non-destructive patch)
-  if (monorepoPackages) {
-    writeMonorepoConfig(cwd, monorepoPackages);
-    console.log(chalk.blue("📦 Monorepo packages written to config.yaml"));
-  }
-
-  // Write version file for update tracking
-  const versionPath = path.join(cwd, DIR_NAMES.WORKFLOW, ".version");
-  fs.writeFileSync(versionPath, VERSION);
-
-  // Configure selected tools by copying entire directories (dogfooding)
-  for (const tool of tools) {
-    const platformId = resolveCliFlag(tool);
-    if (platformId) {
-      console.log(chalk.blue(`📝 Configuring ${AI_TOOLS[platformId].name}...`));
-      await configurePlatform(platformId, cwd);
+  const workflowIdInput = options.workflow?.trim();
+  const workflowId =
+    workflowIdInput && workflowIdInput.length > 0
+      ? workflowIdInput
+      : NATIVE_WORKFLOW_ID;
+  let workflowMdOverride: string | undefined;
+  if (workflowId !== NATIVE_WORKFLOW_ID || options.workflowSource) {
+    const resolved = await resolveWorkflowTemplate(workflowId, {
+      source: options.workflowSource,
+    });
+    if (resolved.id !== NATIVE_WORKFLOW_ID) {
+      workflowMdOverride = resolved.content;
+      console.log(
+        chalk.blue(`🧭 Using workflow template: ${chalk.cyan(resolved.id)}`),
+      );
     }
   }
 
-  const pythonPlatforms = getPlatformsWithPythonHooks();
-  const hasSelectedPythonPlatform = pythonPlatforms.some((id) =>
-    tools.includes(AI_TOOLS[id].cliFlag),
-  );
-  if (hasSelectedPythonPlatform) {
-    logPythonAdaptationNotice(pythonCmd);
+  // ==========================================================================
+  // Create Workflow Structure
+  // ==========================================================================
+
+  // Record every successful write from here through createRootFiles. The
+  // captured set is the source of truth for `.template-hashes.json`'s
+  // platform/root entries — replacing the previous "walk every managed dir"
+  // approach that swept user-owned runtime files into the manifest
+  // (.codex/sessions/, .claude/projects/, pre-existing AGENTS.md).
+  const writtenPaths = startRecordingWrites(cwd);
+  try {
+    // Create workflow structure with project type
+    console.log(chalk.blue("📁 Creating workflow structure..."));
+    await createWorkflowStructure(cwd, {
+      projectType,
+      skipSpecTemplates: useRemoteTemplate,
+      packages: monorepoPackages,
+      remoteSpecPackages,
+      workflowMdOverride,
+    });
+
+    // Write monorepo packages to config.yaml (non-destructive patch)
+    if (monorepoPackages) {
+      writeMonorepoConfig(cwd, monorepoPackages);
+      console.log(chalk.blue("📦 Monorepo packages written to config.yaml"));
+    }
+
+    // Write version file for update tracking
+    const versionPath = path.join(cwd, DIR_NAMES.WORKFLOW, ".version");
+    fs.writeFileSync(versionPath, VERSION);
+
+    // Configure selected tools by copying entire directories (dogfooding)
+    for (const tool of tools) {
+      const platformId = resolveCliFlag(tool);
+      if (platformId) {
+        console.log(
+          chalk.blue(`📝 Configuring ${AI_TOOLS[platformId].name}...`),
+        );
+        await configurePlatform(platformId, cwd);
+      }
+    }
+
+    const pythonPlatforms = getPlatformsWithPythonHooks();
+    const hasSelectedPythonPlatform = pythonPlatforms.some((id) =>
+      tools.includes(AI_TOOLS[id].cliFlag),
+    );
+    if (hasSelectedPythonPlatform) {
+      logPythonAdaptationNotice(pythonCmd);
+    }
+
+    // Create root files (skip if exists)
+    await createRootFiles(cwd);
+  } finally {
+    stopRecordingWrites();
   }
 
-  // Create root files (skip if exists)
-  await createRootFiles(cwd);
-
   // Initialize template hashes for modification tracking
-  const hashedCount = initializeHashes(cwd);
+  const hashedCount = initializeHashes(cwd, { trackedPaths: writtenPaths });
   if (hashedCount > 0) {
     console.log(
       chalk.gray(`📋 Tracking ${hashedCount} template files for updates`),
     );
+  }
+
+  // Non-native workflow is user-managed local content. Drop the
+  // `.trellis/workflow.md` hash entry so `trellis update` classifies it as
+  // modified and does not silently restore native bytes. See design.md
+  // "Durable-state contract".
+  if (workflowMdOverride !== undefined && workflowId !== NATIVE_WORKFLOW_ID) {
+    removeHash(cwd, PATHS.WORKFLOW_GUIDE_FILE);
   }
 
   // Initialize developer identity (silent - no output)
