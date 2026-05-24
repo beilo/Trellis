@@ -60,7 +60,10 @@
 
 ### Main Changes
 
-(Add details)
+- Added project task count state in `App.tsx`, refreshed from the existing cross-project task snapshot API.
+- Wired `tasks` file-change events to refresh ProjectList counts while preserving TaskManagerPanel and KanbanPanel subscriptions.
+- Expanded `version` file-change handling to refresh the changed project's status, not only the selected project.
+- Added a compact "in progress" count pill and local loading indicator to ProjectList.
 
 ### Git Commits
 
@@ -71,7 +74,11 @@
 
 ### Testing
 
-- [OK] (Add test results)
+- [OK] `pnpm build` in `apps/trellis-manager-desktop/frontend`
+- [OK] `pnpm lint` in `apps/trellis-manager-desktop/frontend`
+- [OK] `python3 -m unittest apps/trellis-manager-desktop/tests/test_watcher.py`
+- [OK] `python3 -m unittest apps/trellis-manager-desktop/tests/test_ui.py`
+- [WARN] `npx gitnexus detect-changes --repo /Users/am/temp/Trellis-workers/issue-17` could not resolve the freshly registered worktree; manual staged scope review covered only the three frontend files.
 
 ### Status
 
@@ -234,6 +241,39 @@ Merged upstream v0.6.0-beta.3 into custom/beilo-v0.5-rc, added trellis mem comma
 | Hash | Message |
 |------|---------|
 | `01f79b55` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 8: Manager UI file watcher refresh
+
+**Date**: 2026-05-25
+**Task**: Manager UI file watcher refresh
+**Branch**: `codex/helm-issue-17-604a0302`
+
+### Summary
+
+Implemented watcher-driven refresh coordination for task lists, kanban, and project counts; verified frontend build/lint and watcher tests.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `91343f2d` | (see git log) |
 
 ### Testing
 
