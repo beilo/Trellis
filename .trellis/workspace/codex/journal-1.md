@@ -60,7 +60,9 @@
 
 ### Main Changes
 
-(Add details)
+- Added visible `.trellis/` relative breadcrumb rows above task Context previews.
+- Added visible `.trellis/` relative breadcrumb rows above project Knowledge previews.
+- Kept file reading behavior unchanged; breadcrumbs are display-only.
 
 ### Git Commits
 
@@ -71,7 +73,9 @@
 
 ### Testing
 
-- [OK] (Add test results)
+- [OK] `python3 apps/trellis-manager-desktop/tests/test_file_reader.py`
+- [OK] `pnpm --dir apps/trellis-manager-desktop/frontend lint`
+- [OK] `pnpm --dir apps/trellis-manager-desktop/frontend build`
 
 ### Status
 
@@ -234,6 +238,39 @@ Merged upstream v0.6.0-beta.3 into custom/beilo-v0.5-rc, added trellis mem comma
 | Hash | Message |
 |------|---------|
 | `01f79b55` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 8: Manager context and knowledge browser breadcrumbs
+
+**Date**: 2026-05-24
+**Task**: Manager context and knowledge browser breadcrumbs
+**Branch**: `codex/helm-issue-15-604a0302`
+
+### Summary
+
+Completed issue 15 by adding visible .trellis-relative breadcrumbs to task Context and project Knowledge preview panes. Verified SafeFileReader tests plus frontend lint and build; archived the Trellis task.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `03fa8a30` | (see git log) |
 
 ### Testing
 
