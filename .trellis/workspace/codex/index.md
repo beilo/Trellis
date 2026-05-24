@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
-- **Last Active**: 2026-05-09
+- **Total Sessions**: 7
+- **Last Active**: 2026-05-24
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~207 | Active |
+| `journal-1.md` | ~248 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 7 | 2026-05-24 | 优化桌面端 UI 与系统暗黑模式 | `01f79b55` | `custom/beilo-v0.5-rc` |
 | 6 | 2026-05-09 | 同步 0.6.0 beta trellis mem | `512978c` | `custom/beilo-v0.5-rc` |
 | 5 | 2026-05-07 | 同步 0.5.4 功能 | `4ec8b27`, `92917d9` | `custom/beilo-v0.5-rc` |
 | 4 | 2026-05-06 | 同步 Cursor agent 模板 — description 单行化 + research 加 model | `7b969cb` | `custom/beilo-v0.5-rc` |

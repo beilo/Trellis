@@ -213,3 +213,36 @@ Merged upstream v0.6.0-beta.3 into custom/beilo-v0.5-rc, added trellis mem comma
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: 优化桌面端 UI 与系统暗黑模式
+
+**Date**: 2026-05-24
+**Task**: 优化桌面端 UI 与系统暗黑模式
+**Branch**: `custom/beilo-v0.5-rc`
+
+### Summary
+
+完成了桌面端应用的 UI 深度优化，包括增加自动系统主题同步（支持暗黑模式）、重构 Header Tab 为 macOS 风格胶囊滑动条并将看板 Tab 调整至第一位、精致化 premium-card 磨砂玻璃质感与按钮点击物理回弹动效、重构项目列表侧边栏避免切换像素抖动、以及控制台日志面板字形排版优化和运行状态呼吸灯。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `01f79b55` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
