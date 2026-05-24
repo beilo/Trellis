@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": "apps/trellis-manager-desktop/frontend/src/components/TaskDetail.tsx", "reason": "Task Context tab renders task-level JSONL and Markdown context files."}
+{"file": "apps/trellis-manager-desktop/frontend/src/components/ProjectKnowledgeBrowser.tsx", "reason": "Project-level knowledge browser renders spec/workspace tree and preview."}
+{"file": "apps/trellis-manager-desktop/app/file_reader.py", "reason": "SafeFileReader enforces .trellis-only list/read boundaries."}
+{"file": "apps/trellis-manager-desktop/app/api.py", "reason": "pywebview bridge exposes project and task context file APIs."}
