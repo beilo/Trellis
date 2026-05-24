@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
+- **Total Sessions**: 9
 - **Last Active**: 2026-05-24
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~281 | Active |
+| `journal-1.md` | ~304 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -30,6 +30,7 @@
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
 | 8 | 2026-05-24 | Manager 下一版 UI P0 | `fcbc2c9f` | `codex/helm-issue-13-604a0302` |
+| 9 | 2026-05-24 | Manager context and knowledge browser breadcrumbs | `03fa8a30` | `codex/helm-issue-15-604a0302` |
 | 7 | 2026-05-24 | 优化桌面端 UI 与系统暗黑模式 | `01f79b55` | `custom/beilo-v0.5-rc` |
 | 6 | 2026-05-09 | 同步 0.6.0 beta trellis mem | `512978c` | `custom/beilo-v0.5-rc` |
 | 5 | 2026-05-07 | 同步 0.5.4 功能 | `4ec8b27`, `92917d9` | `custom/beilo-v0.5-rc` |
