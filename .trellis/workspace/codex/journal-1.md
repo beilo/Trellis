@@ -246,3 +246,36 @@ Merged upstream v0.6.0-beta.3 into custom/beilo-v0.5-rc, added trellis mem comma
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: Manager 下一版 UI P0
+
+**Date**: 2026-05-24
+**Task**: Manager 下一版 UI P0
+**Branch**: `codex/helm-issue-13-604a0302`
+
+### Summary
+
+补齐项目健康 pill、三列看板空态/滚动，以及复核 Cursor 入口；已完成构建和 lint 验证。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fcbc2c9f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
