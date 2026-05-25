@@ -389,3 +389,36 @@ Implemented watcher-driven refresh coordination for task lists, kanban, and proj
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: 精细化整理桌面端 UI 细节并修复列表截断 Bug
+
+**Date**: 2026-05-25
+**Task**: 精细化整理桌面端 UI 细节并修复列表截断 Bug
+**Branch**: `custom/beilo-v0.5-rc`
+
+### Summary
+
+完成了第二阶段桌面端 UI 的深度细节美化：1. 重构项目侧边栏列表为双行，并隐藏 redundant 正常 Pill，彻底修复了项目名被挤压截断至 f... 或直接消失的布局 Bug；2. Header 设置按钮修改为 ghost 样式以融入顶栏对齐；3. ProjectCard 增加高对比度主动作 Init/Update 按钮样式引导，并重构 outdated 警示信息为 premium Alert 横幅；4. ProjectGitPanel 去除四个格子的粗线条描边并为 Dirty 状态加色彩标记；5. 看板 Tab 升级顶部 metrics 卡片为上下结构且带彩色边线，柔化暂无任务的虚线框，并精致化任务卡片样式。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8db31736` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

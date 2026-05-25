@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
+- **Total Sessions**: 12
 - **Last Active**: 2026-05-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~376 | Active |
+| `journal-1.md` | ~424 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 12 | 2026-05-25 | 精细化整理桌面端 UI 细节并修复列表截断 Bug | `8db31736` | `custom/beilo-v0.5-rc` |
 | 8 | 2026-05-24 | Manager 下一版 UI P0 | `fcbc2c9f` | `codex/helm-issue-13-604a0302` |
 | 9 | 2026-05-24 | Manager context and knowledge browser breadcrumbs | `03fa8a30` | `codex/helm-issue-15-604a0302` |
 | 10 | 2026-05-25 | Manager P3 batch update settings UI | `20114ad6` | `codex/helm-issue-16-604a0302` |
