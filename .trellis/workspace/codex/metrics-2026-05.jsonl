@@ -24,3 +24,61 @@
 {"ts": "2026-05-20T09:14:19.411274+00:00", "event": "task.create", "task": "manager-project-tab-hide-summary-cards", "title": "项目 Tab 隐藏顶部状态卡片"}
 {"ts": "2026-05-20T09:18:22.503074+00:00", "event": "task.create", "task": "manager-project-list-trellis-version", "title": "项目列表展示各项目 Trellis 版本"}
 {"ts": "2026-05-20T09:40:09.827643+00:00", "event": "task.create", "task": "manager-task-management-design", "title": "Trellis Manager 任务管理系统设计"}
+{"ts": "2026-05-20T11:54:17.008176+00:00", "event": "task.create", "task": "manager-archive-task-visibility", "title": "修复任务管理归档任务显示"}
+{"ts": "2026-05-22T06:54:00.112675+00:00", "event": "task.create", "task": "open-in-iterm", "title": "在任务面板增加'在 iTerm2 中打开'功能"}
+{"ts": "2026-05-22T07:04:11.096444+00:00", "event": "task.start", "task": "open-in-iterm"}
+{"ts": "2026-05-23T05:28:11.083113+00:00", "event": "task.create", "task": "manager-helm-issue-push", "title": "Trellis Manager 推送任务到 Helm Issue"}
+{"ts": "2026-05-23T05:37:48.256447+00:00", "event": "task.start", "task": "manager-helm-issue-push"}
+{"ts": "2026-05-23T06:28:08.485180+00:00", "event": "task.create", "task": "cross-project-kanban", "title": "跨项目统一任务看板"}
+{"ts": "2026-05-23T06:48:29.144345+00:00", "event": "task.start", "task": "cross-project-kanban"}
+{"ts": "2026-05-24T07:01:21.209024+00:00", "event": "task.start", "task": "trellis-manager-ui"}
+{"ts": "2026-05-24T07:01:31.610083+00:00", "event": "task.start", "task": "trellis-manager-ui"}
+{"ts": "2026-05-24T07:26:15.265654+00:00", "event": "task.archive", "task": "trellis-manager-ui"}
+{"ts": "2026-05-24T07:36:37.147965+00:00", "event": "task.create", "task": "open-in-cursor-api", "title": "Open in Cursor API"}
+{"ts": "2026-05-24T07:37:56.501944+00:00", "event": "task.create", "task": "git-summary-update-preview", "title": "Git summary and update preview API"}
+{"ts": "2026-05-24T07:38:15.758081+00:00", "event": "task.create", "task": "safe-file-reader-api", "title": "SafeFileReader 与 Trellis 文件读取 API"}
+{"ts": "2026-05-24T07:38:17.383530+00:00", "event": "task.create", "task": "manager-batch-update-config", "title": "Manager batch update backend config expansion"}
+{"ts": "2026-05-24T07:38:19.742062+00:00", "event": "task.create", "task": "manager-p0-ui-health-kanban-cursor", "title": "Manager P0 UI health kanban cursor"}
+{"ts": "2026-05-24T07:38:52.007072+00:00", "event": "task.create", "task": "manager-ui-p1-docs-git-update-preview", "title": "Manager UI P1 docs git update preview"}
+{"ts": "2026-05-24T07:39:35.719054+00:00", "event": "task.create", "task": "watcher-backend", "title": "文件监听后端"}
+{"ts": "2026-05-24T07:40:07.576676+00:00", "event": "task.create", "task": "manager-p3-batch-update-settings", "title": "Manager P3 batch update UI and settings page"}
+{"ts": "2026-05-24T07:40:17.912506+00:00", "event": "task.create", "task": "manager-ui-p2-context-knowledge", "title": "Manager 下一版 UI P2：Context 查看器 + Spec/Journal 知识库面板"}
+{"ts": "2026-05-24T07:40:56.118864+00:00", "event": "task.create", "task": "manager-ui-file-watcher-auto-refresh", "title": "Manager UI file watcher auto refresh"}
+{"ts": "2026-05-24T07:42:15.349084+00:00", "event": "task.create", "task": "manager-settings-backend", "title": "Manager settings backend configuration"}
+{"ts": "2026-05-24T07:42:15.423853+00:00", "event": "task.create", "task": "manager-batch-project-update", "title": "Manager batch project update API"}
+{"ts": "2026-05-24T07:43:50.488486+00:00", "event": "task.start", "task": "safe-file-reader-api"}
+{"ts": "2026-05-24T07:43:58.904308+00:00", "event": "task.create", "task": "manager-ui-p1-document-preview", "title": "Manager UI P1 document preview"}
+{"ts": "2026-05-24T07:43:59.074350+00:00", "event": "task.create", "task": "manager-ui-p1-git-panel", "title": "Manager UI P1 git panel"}
+{"ts": "2026-05-24T07:43:59.199592+00:00", "event": "task.create", "task": "manager-ui-p1-update-preview-flow", "title": "Manager UI P1 update preview flow"}
+{"ts": "2026-05-24T07:46:47.155071+00:00", "event": "task.start", "task": "manager-p0-ui-health-kanban-cursor"}
+{"ts": "2026-05-24T07:55:47.452356+00:00", "event": "task.create", "task": "task-context-viewer", "title": "任务级 Context 查看器"}
+{"ts": "2026-05-24T07:55:47.577146+00:00", "event": "task.create", "task": "project-knowledge-browser", "title": "项目级知识库浏览器"}
+{"ts": "2026-05-24T07:56:53.050997+00:00", "event": "task.start", "task": "git-summary-update-preview"}
+{"ts": "2026-05-24T07:57:34.648094+00:00", "event": "task.start", "task": "manager-ui-p1-update-preview-flow"}
+{"ts": "2026-05-24T08:00:01.721118+00:00", "event": "task.start", "task": "manager-settings-backend"}
+{"ts": "2026-05-24T08:00:43.406048+00:00", "event": "task.start", "task": "watcher-backend"}
+{"ts": "2026-05-24T08:22:49.428824+00:00", "event": "task.start", "task": "task-context-viewer"}
+{"ts": "2026-05-24T08:30:38.348753+00:00", "event": "task.finish", "task": "manager-settings-backend"}
+{"ts": "2026-05-24T08:31:13.928981+00:00", "event": "task.start", "task": "manager-batch-project-update"}
+{"ts": "2026-05-24T09:08:41.938877+00:00", "event": "task.finish", "task": "manager-batch-project-update"}
+{"ts": "2026-05-24T09:27:11.588146+00:00", "event": "task.start", "task": "manager-ui-file-watcher-auto-refresh"}
+{"ts": "2026-05-24T13:55:16.788105+00:00", "event": "task.archive", "task": "manager-settings-backend"}
+{"ts": "2026-05-24T13:55:16.853215+00:00", "event": "task.archive", "task": "manager-batch-project-update"}
+{"ts": "2026-05-24T13:55:16.916568+00:00", "event": "task.archive", "task": "manager-ui-p1-document-preview"}
+{"ts": "2026-05-24T13:55:16.979861+00:00", "event": "task.archive", "task": "manager-ui-p1-git-panel"}
+{"ts": "2026-05-24T13:55:17.043289+00:00", "event": "task.archive", "task": "manager-ui-p1-update-preview-flow"}
+{"ts": "2026-05-24T13:55:17.106541+00:00", "event": "task.archive", "task": "task-context-viewer"}
+{"ts": "2026-05-24T13:55:17.169358+00:00", "event": "task.archive", "task": "project-knowledge-browser"}
+{"ts": "2026-05-24T13:55:17.234719+00:00", "event": "task.archive", "task": "git-summary-update-preview"}
+{"ts": "2026-05-24T13:55:17.298486+00:00", "event": "task.archive", "task": "manager-p0-ui-health-kanban-cursor"}
+{"ts": "2026-05-24T13:55:17.362592+00:00", "event": "task.archive", "task": "manager-p3-batch-update-settings"}
+{"ts": "2026-05-24T13:55:17.429944+00:00", "event": "task.archive", "task": "manager-ui-file-watcher-auto-refresh"}
+{"ts": "2026-05-24T13:55:17.502817+00:00", "event": "task.archive", "task": "open-in-cursor-api"}
+{"ts": "2026-05-24T13:55:17.566117+00:00", "event": "task.archive", "task": "safe-file-reader-api"}
+{"ts": "2026-05-24T13:55:17.629592+00:00", "event": "task.archive", "task": "watcher-backend"}
+{"ts": "2026-05-24T13:55:17.692892+00:00", "event": "task.archive", "task": "manager-batch-update-config"}
+{"ts": "2026-05-24T13:55:17.756529+00:00", "event": "task.archive", "task": "manager-ui-p1-docs-git-update-preview"}
+{"ts": "2026-05-24T13:55:17.821450+00:00", "event": "task.archive", "task": "manager-ui-p2-context-knowledge"}
+{"ts": "2026-05-31T04:44:15.436602+00:00", "event": "task.create", "task": "init-precheck-platform-developer", "title": "桌面端初始化前置配置校验：平台多选与开发者名"}
+{"ts": "2026-05-31T06:07:12.601981+00:00", "event": "task.start", "task": "init-precheck-platform-developer"}
+{"ts": "2026-05-31T06:54:16.885222+00:00", "event": "task.finish", "task": "init-precheck-platform-developer"}
