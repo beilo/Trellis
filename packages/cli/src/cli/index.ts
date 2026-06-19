@@ -83,6 +83,7 @@ program
   .option("--droid", "Include Factory Droid commands")
   .option("--pi", "Include Pi Agent extension assets")
   .option("--reasonix", "Include Reasonix skills")
+  .option("--with-gitnexus", "Run GitNexus MCP setup after Trellis init")
   .option("-y, --yes", "Skip prompts and use defaults")
   .option(
     "-u, --user <name>",

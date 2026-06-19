@@ -1486,6 +1486,96 @@ if (!hadDeveloperFileBefore) {
 
 ---
 
+## Scenario: Delegated Init Integration Setup Flags
+
+### 1. Scope / Trigger
+
+Use this when adding an opt-in `trellis init` flag that delegates setup to an external tool after Trellis has written its normal project files. This is not the same as adding a new AI platform: the external tool owns its own MCP setup, indexing, generated instructions, local artifacts, and retry UX.
+
+### 2. Signatures
+
+Command surface:
+
+```bash
+trellis init --with-<integration>
+```
+
+Implementation surface:
+
+```typescript
+interface InitOptions {
+  withIntegration?: boolean;
+}
+
+function runIntegrationSetup(cwd: string): void;
+```
+
+Concrete GitNexus command:
+
+```bash
+trellis init --with-gitnexus
+npx --yes gitnexus setup
+```
+
+### 3. Contracts
+
+- The flag is explicit user consent to run the external setup command.
+- The setup command runs after normal Trellis init writes complete.
+- The setup command runs with `cwd` set to the initialized project root.
+- Setup failure is required failure: let the child-process error bubble to the CLI top-level catch.
+- Do not roll back Trellis files already written before setup fails.
+- Do not add a Trellis config flag unless runtime behavior genuinely needs persisted Trellis-owned state.
+- Do not add `trellis update --with-<integration>` unless update-time behavior has its own product contract.
+- Do not manage the external tool's generated files, ignore rules, instructions, or indexes from Trellis unless that ownership is explicitly designed.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+|---|---|
+| Plain `trellis init` | Does not invoke the external setup command |
+| `trellis init --with-<integration>` | Invokes exactly the documented setup command once |
+| Setup exits nonzero | `init()` rejects / CLI exits 1 |
+| Setup exits nonzero after Trellis writes | `.trellis/` and root files already written by init remain on disk |
+| External tool requires indexing later | Trellis init does not run indexing implicitly |
+
+### 5. Good/Base/Bad Cases
+
+- Good: `trellis init --with-gitnexus` writes Trellis files, then runs `npx --yes gitnexus setup`; if setup fails, the command fails and the user can retry GitNexus setup directly.
+- Base: `trellis init` remains byte-for-byte scoped to Trellis setup and never invokes GitNexus.
+- Bad: `trellis init --with-gitnexus` writes GitNexus instructions into `AGENTS.md`, edits `.gitignore`, runs `gitnexus analyze`, or stores a Trellis-owned `gitnexus.enabled` flag without a runtime consumer.
+
+### 6. Tests Required
+
+- Integration test that default `init({ yes: true })` does not call the external setup command.
+- Integration test that `init({ yes: true, withIntegration: true })` calls the exact setup command with `{ cwd, stdio: "inherit" }`.
+- Integration test that setup failure rejects while previously written Trellis files still exist.
+- Tests must mock `node:child_process`; never run the real external setup command in test.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+if (options.withGitnexus) {
+  execSync("npx --yes gitnexus setup", { cwd });
+  execSync("npx --yes gitnexus analyze", { cwd });
+  writeFileSync(path.join(cwd, ".trellis/config.yaml"), "gitnexus: true");
+}
+```
+
+#### Correct
+
+```typescript
+if (options.withGitnexus) {
+  execSync("npx --yes gitnexus setup", {
+    cwd,
+    stdio: "inherit",
+  });
+}
+```
+
+---
+
 ## Common Mistakes
 
 ### Forgot to add entry to PLATFORM_FUNCTIONS
