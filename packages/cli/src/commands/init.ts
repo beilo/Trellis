@@ -70,8 +70,6 @@ import { updateHashes } from "../utils/template-hash.js";
 const MIN_PYTHON_MAJOR = 3;
 const MIN_PYTHON_MINOR = 9;
 const PYTHON_VERSION_RE = /Python (\d+)\.(\d+)/;
-const GITNEXUS_SETUP_COMMAND = "npx --yes gitnexus setup";
-
 function collectSpecPaths(cwd: string): Set<string> {
   const specRoot = path.join(cwd, PATHS.SPEC);
   const paths = new Set<string>();
@@ -285,14 +283,6 @@ function logPythonAdaptationNotice(command: string): void {
       `📌 ${osName} detected: Trellis rendered Python commands as "${command}" in generated hooks, settings, and help text`,
     ),
   );
-}
-
-function runGitnexusSetup(cwd: string): void {
-  console.log(chalk.blue("🔗 Setting up GitNexus..."));
-  execSync(GITNEXUS_SETUP_COMMAND, {
-    cwd,
-    stdio: "inherit",
-  });
 }
 
 // =============================================================================
@@ -981,7 +971,6 @@ interface InitOptions {
   droid?: boolean;
   pi?: boolean;
   reasonix?: boolean;
-  withGitnexus?: boolean;
   yes?: boolean;
   user?: string;
   force?: boolean;
@@ -1984,10 +1973,6 @@ export async function init(options: InitOptions): Promise<void> {
         );
       }
     }
-  }
-
-  if (options.withGitnexus) {
-    runGitnexusSetup(cwd);
   }
 }
 

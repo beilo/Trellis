@@ -55,13 +55,6 @@ import { execSync } from "node:child_process";
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
-const GITNEXUS_SETUP_COMMAND = "npx --yes gitnexus setup";
-
-function gitnexusSetupCalls(): Parameters<typeof execSync>[] {
-  return vi
-    .mocked(execSync)
-    .mock.calls.filter(([cmd]) => cmd === GITNEXUS_SETUP_COMMAND);
-}
 
 describe("init() integration", () => {
   let tmpDir: string;
@@ -672,46 +665,6 @@ describe("init() integration", () => {
         `Trellis rendered Python commands as "${expectedPythonCmd}" in generated hooks, settings, and help text`,
       ),
     );
-  });
-
-  it("#7e does not run GitNexus setup by default", async () => {
-    await init({ yes: true });
-
-    expect(gitnexusSetupCalls()).toEqual([]);
-  });
-
-  it("#7f runs GitNexus setup after opt-in init writes complete", async () => {
-    await init({ yes: true, withGitnexus: true });
-
-    const calls = gitnexusSetupCalls();
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toEqual([
-      GITNEXUS_SETUP_COMMAND,
-      { cwd: tmpDir, stdio: "inherit" },
-    ]);
-    expect(fs.existsSync(path.join(tmpDir, DIR_NAMES.WORKFLOW))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, FILE_NAMES.AGENTS))).toBe(true);
-  });
-
-  it("#7g rejects when GitNexus setup fails without rolling back init writes", async () => {
-    vi.mocked(execSync).mockImplementation(((cmd: string) => {
-      const expectedPythonCmd =
-        process.platform === "win32" ? "python" : "python3";
-      if (cmd === `${expectedPythonCmd} --version`) {
-        return "Python 3.11.12";
-      }
-      if (cmd === GITNEXUS_SETUP_COMMAND) {
-        throw new Error("gitnexus setup failed");
-      }
-      return "";
-    }) as typeof execSync);
-
-    await expect(init({ yes: true, withGitnexus: true })).rejects.toThrow(
-      "gitnexus setup failed",
-    );
-
-    expect(fs.existsSync(path.join(tmpDir, DIR_NAMES.WORKFLOW))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, FILE_NAMES.AGENTS))).toBe(true);
   });
 
   it("#8 writes correct version file", async () => {

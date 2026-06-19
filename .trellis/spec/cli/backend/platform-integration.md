@@ -1486,46 +1486,45 @@ if (!hadDeveloperFileBefore) {
 
 ---
 
-## Scenario: Delegated Init Integration Setup Flags
+## Scenario: Setup Commands for External Capabilities
 
 ### 1. Scope / Trigger
 
-Use this when adding an opt-in `trellis init` flag that delegates setup to an external tool after Trellis has written its normal project files. This is not the same as adding a new AI platform: the external tool owns its own MCP setup, indexing, generated instructions, local artifacts, and retry UX.
+Use this when adding an explicit `trellis setup <target>` command that delegates setup to an external tool for an already initialized Trellis project. This is not the same as adding a new AI platform: the external tool owns its own MCP setup, indexing, generated instructions, local artifacts, and retry UX.
 
 ### 2. Signatures
 
 Command surface:
 
 ```bash
-trellis init --with-<integration>
+trellis setup <target>
 ```
 
 Implementation surface:
 
 ```typescript
-interface InitOptions {
-  withIntegration?: boolean;
-}
-
-function runIntegrationSetup(cwd: string): void;
+function setup(target: string, cwd?: string): void;
 ```
 
 Concrete GitNexus command:
 
 ```bash
-trellis init --with-gitnexus
+trellis setup gitnexus
 npx --yes gitnexus setup
 ```
 
 ### 3. Contracts
 
-- The flag is explicit user consent to run the external setup command.
-- The setup command runs after normal Trellis init writes complete.
-- The setup command runs with `cwd` set to the initialized project root.
+- The explicit setup command is user consent to run the external setup command.
+- The setup command requires an already initialized Trellis project (`.trellis/` exists).
+- The setup command runs with `cwd` set to the current project root.
+- Supported setup targets must be registered explicitly; unknown targets must fail before any external command runs.
 - Setup failure is required failure: let the child-process error bubble to the CLI top-level catch.
-- Do not roll back Trellis files already written before setup fails.
+- Preserve the external tool's own output as much as possible, typically with `stdio: "inherit"`.
 - Do not add a Trellis config flag unless runtime behavior genuinely needs persisted Trellis-owned state.
+- Do not add `trellis init --with-<integration>` unless init-time behavior has its own product contract.
 - Do not add `trellis update --with-<integration>` unless update-time behavior has its own product contract.
+- Do not add dry-run unless the external tool provides a real dry-run contract Trellis can delegate to.
 - Do not manage the external tool's generated files, ignore rules, instructions, or indexes from Trellis unless that ownership is explicitly designed.
 
 ### 4. Validation & Error Matrix
@@ -1533,22 +1532,24 @@ npx --yes gitnexus setup
 | Condition | Required behavior |
 |---|---|
 | Plain `trellis init` | Does not invoke the external setup command |
-| `trellis init --with-<integration>` | Invokes exactly the documented setup command once |
-| Setup exits nonzero | `init()` rejects / CLI exits 1 |
-| Setup exits nonzero after Trellis writes | `.trellis/` and root files already written by init remain on disk |
-| External tool requires indexing later | Trellis init does not run indexing implicitly |
+| `trellis setup <unknown>` | Rejects and lists supported targets |
+| `trellis setup <target>` outside `.trellis/` project | Rejects before running the external setup command |
+| `trellis setup gitnexus` | Invokes exactly the documented setup command once |
+| Setup exits nonzero | `setup()` rejects / CLI exits 1 |
+| External tool requires indexing later | Trellis setup does not run indexing implicitly |
 
 ### 5. Good/Base/Bad Cases
 
-- Good: `trellis init --with-gitnexus` writes Trellis files, then runs `npx --yes gitnexus setup`; if setup fails, the command fails and the user can retry GitNexus setup directly.
-- Base: `trellis init` remains byte-for-byte scoped to Trellis setup and never invokes GitNexus.
-- Bad: `trellis init --with-gitnexus` writes GitNexus instructions into `AGENTS.md`, edits `.gitignore`, runs `gitnexus analyze`, or stores a Trellis-owned `gitnexus.enabled` flag without a runtime consumer.
+- Good: `trellis setup gitnexus` in an initialized project runs `npx --yes gitnexus setup`; if setup fails, the command fails and the user can retry after addressing GitNexus's own diagnostics.
+- Base: `trellis init` remains scoped to Trellis project onboarding and never invokes GitNexus.
+- Bad: `trellis setup gitnexus` writes GitNexus instructions into `AGENTS.md`, edits `.gitignore`, runs `gitnexus analyze`, or stores a Trellis-owned `gitnexus.enabled` flag without a runtime consumer.
 
 ### 6. Tests Required
 
-- Integration test that default `init({ yes: true })` does not call the external setup command.
-- Integration test that `init({ yes: true, withIntegration: true })` calls the exact setup command with `{ cwd, stdio: "inherit" }`.
-- Integration test that setup failure rejects while previously written Trellis files still exist.
+- Integration test that `setup("gitnexus")` calls the exact setup command with `{ cwd, stdio: "inherit" }` when `.trellis/` exists.
+- Integration test that `setup("gitnexus")` outside a Trellis project rejects before running a child process.
+- Integration test that unknown setup targets reject before running a child process.
+- Integration test that setup failure rejects without catching or rewriting the child-process error.
 - Tests must mock `node:child_process`; never run the real external setup command in test.
 
 ### 7. Wrong vs Correct
@@ -1556,17 +1557,15 @@ npx --yes gitnexus setup
 #### Wrong
 
 ```typescript
-if (options.withGitnexus) {
-  execSync("npx --yes gitnexus setup", { cwd });
-  execSync("npx --yes gitnexus analyze", { cwd });
-  writeFileSync(path.join(cwd, ".trellis/config.yaml"), "gitnexus: true");
-}
+execSync("npx --yes gitnexus setup", { cwd });
+execSync("npx --yes gitnexus analyze", { cwd });
+writeFileSync(path.join(cwd, ".trellis/config.yaml"), "gitnexus: true");
 ```
 
 #### Correct
 
 ```typescript
-if (options.withGitnexus) {
+if (target === "gitnexus") {
   execSync("npx --yes gitnexus setup", {
     cwd,
     stdio: "inherit",

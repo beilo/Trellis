@@ -12,25 +12,25 @@ _Avoid_: GitNexus project template, GitNexus CLI wrapper
 An integration that is installed only after an explicit user choice. It is not inferred from the selected AI platform or from project configuration.
 _Avoid_: default integration, platform-implied integration
 
-**Integration Flag**:
-A command-line option that explicitly enables an optional integration during project initialization. It is the first integration entry point before a broader integration command surface exists.
-_Avoid_: integration subcommand, interactive integration prompt
+**Setup Command**:
+A Trellis CLI command that explicitly installs or configures an external capability for an already initialized Trellis project. `tl init` remains Trellis project onboarding; `tl setup <target>` installs a named external capability.
+_Avoid_: init flag, hidden compatibility alias, integration subcommand hidden under init, interactive integration prompt
+
+**Setup Target**:
+A registered external capability that `tl setup` can install or configure for the current project. Unknown targets are rejected instead of interpreted dynamically.
+_Avoid_: init option, platform flag, Trellis project template
 
 **Delegated MCP Setup**:
-MCP configuration performed by the external integration's setup command after the user explicitly enables that integration through Trellis. Trellis owns the opt-in decision; the integration owns the detailed MCP wiring it knows how to install.
+MCP configuration performed by an external integration's setup command after the user explicitly runs a Trellis setup command. Trellis owns the opt-in decision; the integration owns the detailed MCP wiring it knows how to install.
 _Avoid_: Trellis-authored MCP wiring, hand-copied MCP configuration
 
-**Setup Authorization Flag**:
-An integration flag that grants Trellis permission to run the external integration's setup command without a second confirmation prompt. The explicit flag is the user's consent for the setup side effects.
+**Setup Authorization Command**:
+A setup command that grants Trellis permission to run the external integration's setup command without a second confirmation prompt. The explicit command is the user's consent for the setup side effects.
 _Avoid_: second setup prompt, implicit setup
 
 **Required Integration Setup**:
-An explicitly enabled integration whose setup must complete successfully for the Trellis command to succeed. If the external setup command fails, the Trellis initialization command fails too.
+An explicitly requested setup target whose setup must complete successfully for the Trellis command to succeed. If the external setup command fails, the Trellis setup command fails too.
 _Avoid_: best-effort integration setup, warning-only setup failure
-
-**Post-write Setup**:
-Integration setup that runs after Trellis has written its normal project files. A setup failure makes the command fail but does not imply rollback of already-written project files.
-_Avoid_: pre-init setup, transactional integration setup
 
 **Setup-only Enablement**:
 An integration enablement flow that runs the external MCP setup command but does not create or refresh a code index. Indexing remains a separate user-authorized action.
@@ -41,7 +41,7 @@ The concrete command Trellis runs after a user opts in to an external integratio
 _Avoid_: global binary requirement, pinned latest setup command
 
 **Stateless Integration Enablement**:
-An enablement flow that does not write a Trellis-owned project configuration flag for the integration. The integration's availability is determined by its own setup, MCP configuration, and index state rather than a Trellis config marker.
+An enablement flow that does not write a Trellis-owned project configuration flag for the setup target. The target's availability is determined by its own setup, MCP configuration, and index state rather than a Trellis config marker.
 _Avoid_: Trellis integration registry, project-level integration flag
 
 **External Artifact Ownership**:
