@@ -3,7 +3,6 @@ import path from "node:path";
 import chalk from "chalk";
 import { Command } from "commander";
 import { init } from "../commands/init.js";
-import { setup } from "../commands/setup.js";
 import { update } from "../commands/update.js";
 import { upgrade } from "../commands/upgrade.js";
 import { uninstall } from "../commands/uninstall.js";
@@ -148,25 +147,6 @@ program
         allowDowngrade: options.allowDowngrade as boolean,
         migrate: options.migrate as boolean,
       });
-    } catch (error) {
-      console.error(
-        chalk.red("Error:"),
-        error instanceof Error ? error.message : error,
-      );
-      if (process.env.DEBUG || process.env.TRELLIS_DEBUG) {
-        console.error(error instanceof Error ? error.stack : error);
-      }
-      process.exit(1);
-    }
-  });
-
-program
-  .command("setup")
-  .description("Set up an external capability for the current Trellis project")
-  .argument("<target>", "setup target (gitnexus)")
-  .action((target: string) => {
-    try {
-      setup(target);
     } catch (error) {
       console.error(
         chalk.red("Error:"),

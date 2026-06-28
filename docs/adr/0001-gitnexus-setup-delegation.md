@@ -1,5 +1,0 @@
-# Delegate GitNexus Setup Instead of Owning Its Integration Surface
-
-Trellis will treat GitNexus as an external code intelligence MCP integration, not as a Trellis-owned project template feature. `tl setup gitnexus` runs `npx --yes gitnexus setup` for an already initialized Trellis project, and setup failure fails the command; Trellis will not author GitNexus instructions, manage GitNexus index files, write GitNexus ignore rules, store a project-level GitNexus enabled flag, run `gitnexus analyze`, provide `tl init --with-gitnexus`, or provide `tl update --with-gitnexus` in the first integration shape.
-
-This keeps ownership clear: GitNexus owns MCP setup details, indexing, diagnostics, and its generated `gitnexus` instruction block, while Trellis only provides an explicit opt-in setup command that CLI users and desktop surfaces can share. Trellis should preserve GitNexus's own setup output as much as possible instead of rewriting its diagnostics. The first version does not provide a dry-run mode because Trellis cannot honestly preview the external tool's MCP configuration side effects unless GitNexus provides its own dry-run contract.
