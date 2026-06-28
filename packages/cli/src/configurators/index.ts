@@ -26,13 +26,15 @@ import { configureKilo } from "./kilo.js";
 import { configureKiro } from "./kiro.js";
 import { configureGemini } from "./gemini.js";
 import { configureAntigravity } from "./antigravity.js";
-import { configureWindsurf } from "./windsurf.js";
+import { configureDevin } from "./devin.js";
 import { configureQoder } from "./qoder.js";
 import { configureCodebuddy } from "./codebuddy.js";
 import { configureCopilot } from "./copilot.js";
 import { configureDroid } from "./droid.js";
 import { configurePi, collectPiTemplates } from "./pi.js";
 import { configureReasonix, collectReasonixTemplates } from "./reasonix.js";
+import { configureZcode, collectZcodeTemplates } from "./zcode.js";
+import { configureTrae } from "./trae.js";
 
 // Shared utilities
 import {
@@ -41,7 +43,6 @@ import {
   resolveAllAsSkills,
   resolveAllAsSkillsNeutral,
   resolveBundledSkills,
-  resolveCodexTrellisStartSkill,
   resolveCommands,
   resolveSkills,
   resolveSkillsNeutral,
@@ -50,6 +51,7 @@ import {
   applyPullBasedPreludeMarkdown,
   applyPullBasedPreludeToml,
   normalizeCopilotMarkdownAgents,
+  type PlatformConfigureOptions,
 } from "./shared.js";
 
 // Platform-specific template content (hooks, agents, settings — NOT commands/skills)
@@ -73,6 +75,10 @@ import {
   getSettingsTemplate as getQoderSettings,
 } from "../templates/qoder/index.js";
 import {
+  getAllAgents as getTraeAgents,
+  getSettingsTemplate as getTraeSettings,
+} from "../templates/trae/index.js";
+import {
   getAllAgents as getCodebuddyAgents,
   getSettingsTemplate as getCodebuddySettings,
 } from "../templates/codebuddy/index.js";
@@ -88,7 +94,10 @@ import {
   getAllAgents as getGeminiAgents,
   getSettingsTemplate as getGeminiSettings,
 } from "../templates/gemini/index.js";
-import { getAllAgents as getKiroAgents } from "../templates/kiro/index.js";
+import {
+  getAllAgents as getKiroAgents,
+  getIdeHooks as getKiroIdeHooks,
+} from "../templates/kiro/index.js";
 import {
   getSharedHookScriptsForPlatform,
   type SharedHookPlatform,
@@ -100,7 +109,7 @@ import {
 
 interface PlatformFunctions {
   /** Configure platform during init (copy templates to project) */
-  configure: (cwd: string) => Promise<void>;
+  configure: (cwd: string, options?: PlatformConfigureOptions) => Promise<void>;
   /** Collect template files for update tracking. Undefined = platform skipped during update. */
   collectTemplates?: () => Map<string, string>;
 }
@@ -216,16 +225,6 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       )) {
         files.set(filePath, content);
       }
-      // Mirror configureCodex's extra trellis-start write so `trellis update`
-      // picks up the file (was missing pre-0.5.7 — upgrade path silently
-      // dropped the skill).
-      const trellisStart = resolveCodexTrellisStartSkill(ctx);
-      if (trellisStart) {
-        files.set(
-          `.agents/skills/${trellisStart.name}/SKILL.md`,
-          trellisStart.content,
-        );
-      }
       for (const skill of getCodexPlatformSkills()) {
         files.set(`.codex/skills/${skill.name}/SKILL.md`, skill.content);
       }
@@ -278,6 +277,12 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       for (const [k, v] of collectSharedHooks(".kiro/hooks", "kiro")) {
         files.set(k, v);
       }
+      for (const hook of getKiroIdeHooks()) {
+        files.set(
+          `.kiro/hooks/${hook.name}`,
+          resolvePlaceholders(hook.content),
+        );
+      }
       return files;
     },
   },
@@ -322,13 +327,13 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
         ".agent/skills",
       ),
   },
-  windsurf: {
-    configure: configureWindsurf,
+  devin: {
+    configure: configureDevin,
     collectTemplates: () =>
       collectBothTemplates(
-        AI_TOOLS.windsurf.templateContext,
-        (n) => `.windsurf/workflows/trellis-${n}.md`,
-        ".windsurf/skills",
+        AI_TOOLS.devin.templateContext,
+        (n) => `.devin/workflows/trellis-${n}.md`,
+        ".devin/skills",
       ),
   },
   qoder: {
@@ -452,6 +457,36 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
     configure: configureReasonix,
     collectTemplates: () => collectReasonixTemplates(),
   },
+  zcode: {
+    configure: configureZcode,
+    collectTemplates: () => collectZcodeTemplates(),
+  },
+  trae: {
+    configure: configureTrae,
+    collectTemplates: () => {
+      const files = collectBothTemplates(
+        AI_TOOLS.trae.templateContext,
+        (n) => `.trae/commands/trellis-${n}.md`,
+        ".trae/skills",
+        (filePath, content) => {
+          const name = path.basename(filePath, ".md");
+          return wrapWithCommandFrontmatter(name, content);
+        },
+      );
+      for (const agent of applyPullBasedPreludeMarkdown(getTraeAgents())) {
+        files.set(`.trae/agents/${agent.name}.md`, agent.content);
+      }
+      for (const [k, v] of collectSharedHooks(".trae/hooks", "trae")) {
+        files.set(k, v);
+      }
+      const settings = getTraeSettings();
+      files.set(
+        `.trae/${settings.targetPath}`,
+        resolvePlaceholders(settings.content),
+      );
+      return files;
+    },
+  },
 };
 
 // =============================================================================
@@ -485,6 +520,12 @@ export function getConfiguredPlatforms(cwd: string): Set<AITool> {
     if (fs.existsSync(path.join(cwd, AI_TOOLS[id].configDir))) {
       platforms.add(id);
     }
+  }
+  // Back-compat: Windsurf was renamed to Devin (config dir .windsurf → .devin).
+  // A pre-rename install with only `.windsurf/workflows/` still counts as Devin
+  // so re-init / update recognize it (and `--migrate` can move it to `.devin/`).
+  if (fs.existsSync(path.join(cwd, ".windsurf", "workflows"))) {
+    platforms.add("devin");
   }
   return platforms;
 }
@@ -527,8 +568,9 @@ export function getPlatformManagedPaths(platformId: AITool): string[] {
 export function configurePlatform(
   platformId: AITool,
   cwd: string,
+  options?: PlatformConfigureOptions,
 ): Promise<void> {
-  return PLATFORM_FUNCTIONS[platformId].configure(cwd);
+  return PLATFORM_FUNCTIONS[platformId].configure(cwd, options);
 }
 
 /**

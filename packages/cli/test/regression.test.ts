@@ -12,7 +12,7 @@
  * 5. Platform Registry (beta.9, beta.13, beta.16)
  */
 
-import { execSync, spawnSync } from "node:child_process";
+import { execSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -31,6 +31,7 @@ import { PATHS } from "../src/constants/paths.js";
 import {
   settingsTemplate as claudeSettingsTemplate,
   getAllAgents as getClaudeAgents,
+  getStatuslineHook,
 } from "../src/templates/claude/index.js";
 import { getAllHooks as getCodexHooks } from "../src/templates/codex/index.js";
 import { getAllHooks as getCopilotHooks } from "../src/templates/copilot/index.js";
@@ -662,6 +663,18 @@ describe("regression: migration data integrity (beta.14)", () => {
     expect(claudeStatusLineDeletes).toEqual([]);
   });
 
+  it("[statusline-opt-in] statusline.py is not in claude's collected templates (update must not force-install it)", () => {
+    // The opt-in statusline (`trellis init --with-statusline`) must stay out
+    // of the unconditional template walk: analyzeChanges() classifies any
+    // collected-but-absent file as `newFiles` and installs it on update,
+    // which would force statusline onto opted-out projects.
+    const templates = collectPlatformTemplates("claude-code");
+    expect(templates).toBeDefined();
+    expect([...(templates?.keys() ?? [])]).not.toContain(
+      ".claude/hooks/statusline.py",
+    );
+  });
+
   it("[beta.14] rename/rename-dir migrations have 'to' field", () => {
     const allMigrations = getAllMigrations();
     const renames = allMigrations.filter(
@@ -719,7 +732,7 @@ describe("regression: update only configured platforms (beta.16)", () => {
       "kiro",
       "gemini",
       "antigravity",
-      "windsurf",
+      "devin",
       "qoder",
       "codebuddy",
       "copilot",
@@ -2009,6 +2022,184 @@ describe("regression: current-task path normalization", () => {
     expect(output).not.toContain("issue-106");
   });
 
+  it("[session-current-task] Claude statusline uses session-scoped task when session_id is present", () => {
+    setupTaskRepo();
+    writeLegacyCurrentTask(".trellis/tasks/issue-106");
+    writeProjectFile(
+      path.join(".trellis", "tasks", "session-task", "task.json"),
+      JSON.stringify(
+        {
+          title: "Session scoped task",
+          status: "in_progress",
+          priority: "P1",
+        },
+        null,
+        2,
+      ),
+    );
+    writeProjectFile(
+      path.join(".trellis", ".runtime", "sessions", "claude_status-a.json"),
+      JSON.stringify(
+        {
+          current_task: ".trellis/tasks/session-task",
+          platform: "claude",
+        },
+        null,
+        2,
+      ),
+    );
+    writeProjectFile(
+      path.join(".claude", "hooks", "statusline.py"),
+      getStatuslineHook(),
+    );
+
+    const nowSecs = Math.floor(Date.now() / 1000);
+    const output = runPython(
+      path.join(".claude", "hooks", "statusline.py"),
+      JSON.stringify({
+        session_id: "status-a",
+        model: { display_name: "Test" },
+        context_window: { used_percentage: 1, context_window_size: 1000 },
+        cost: { total_duration_ms: 0 },
+        rate_limits: {
+          five_hour: {
+            used_percentage: 17,
+            resets_at: nowSecs + 4 * 3600 + 31 * 60 + 60,
+          },
+          seven_day: {
+            used_percentage: 19,
+            resets_at: nowSecs + 2 * 86400 + 11 * 3600 + 60,
+          },
+        },
+      }),
+    );
+
+    expect(output).toContain("Session scoped task");
+    expect(output).toContain("[session]");
+    expect(output).not.toContain("Issue 106 task");
+    // Rate-limit display with reset countdown (opt-in statusline enhancement)
+    expect(output).toContain("5h 17%");
+    expect(output).toMatch(/\(reset 4h3[12]m\)/);
+    expect(output).toContain("7d 19%");
+    expect(output).toContain("(reset 2d11h)");
+  });
+
+  it("[session-current-task] Claude statusline ignores legacy .current-task without session context", () => {
+    setupTaskRepo();
+    writeLegacyCurrentTask(".trellis/tasks/issue-106");
+    writeProjectFile(
+      path.join(".claude", "hooks", "statusline.py"),
+      getStatuslineHook(),
+    );
+
+    const output = runPython(
+      path.join(".claude", "hooks", "statusline.py"),
+      JSON.stringify({
+        model: { display_name: "Test" },
+        context_window: { used_percentage: 1, context_window_size: 1000 },
+        cost: { total_duration_ms: 0 },
+      }),
+    );
+
+    expect(output).not.toContain("Issue 106 task");
+    expect(output).not.toContain("[global]");
+  });
+
+  it("[statusline-opt-in] Claude statusline tolerates ISO-8601 resets_at and missing seven_day (no crash)", () => {
+    setupTaskRepo();
+    writeProjectFile(
+      path.join(".claude", "hooks", "statusline.py"),
+      getStatuslineHook(),
+    );
+
+    // resets_at wire format is not pinned across Claude Code versions:
+    // epoch seconds and ISO-8601 strings have both been observed. The
+    // statusline must render the countdown for ISO too — and never crash.
+    const isoReset = new Date(
+      Date.now() + (4 * 3600 + 31 * 60 + 90) * 1000,
+    ).toISOString();
+    const output = runPython(
+      path.join(".claude", "hooks", "statusline.py"),
+      JSON.stringify({
+        model: { display_name: "Test" },
+        context_window: { used_percentage: 1, context_window_size: 1000 },
+        cost: { total_duration_ms: 0 },
+        rate_limits: {
+          five_hour: { used_percentage: 17, resets_at: isoReset },
+          // seven_day intentionally absent
+        },
+      }),
+    );
+
+    expect(output).toContain("5h 17%");
+    expect(output).toMatch(/\(reset 4h3[12]m\)/);
+    expect(output).not.toContain("7d");
+  });
+
+  function statuslineRateLimitPayload(): string {
+    const nowSecs = Math.floor(Date.now() / 1000);
+    return JSON.stringify({
+      model: { display_name: "Test" },
+      context_window: { used_percentage: 1, context_window_size: 1000 },
+      cost: { total_duration_ms: 0 },
+      rate_limits: {
+        five_hour: {
+          used_percentage: 17,
+          resets_at: nowSecs + 4 * 3600 + 31 * 60 + 60,
+        },
+        seven_day: {
+          used_percentage: 19,
+          resets_at: nowSecs + 2 * 86400 + 11 * 3600 + 60,
+        },
+      },
+    });
+  }
+
+  it("[statusline-opt-in] Claude statusline moves rate limits to their own line when COLUMNS is narrow", () => {
+    setupTaskRepo();
+    writeProjectFile(
+      path.join(".claude", "hooks", "statusline.py"),
+      getStatuslineHook(),
+    );
+
+    // COLUMNS is injected by Claude Code v2.1.153+. The split must be an
+    // explicit "\n": the status bar counts only newlines for its height,
+    // so relying on terminal auto-wrap misaligns rows.
+    const output = runPython(
+      path.join(".claude", "hooks", "statusline.py"),
+      statuslineRateLimitPayload(),
+      { COLUMNS: "60" },
+    );
+
+    const lines = output.trimEnd().split("\n");
+    expect(lines.length).toBe(2);
+    const [infoLine, rateLine] = lines;
+    expect(infoLine).not.toContain("5h");
+    expect(infoLine).not.toContain("7d");
+    expect(rateLine).toContain("5h 17%");
+    expect(rateLine).toContain("7d 19%");
+  });
+
+  it("[statusline-opt-in] Claude statusline stays single-line when COLUMNS is wide or unset", () => {
+    setupTaskRepo();
+    writeProjectFile(
+      path.join(".claude", "hooks", "statusline.py"),
+      getStatuslineHook(),
+    );
+
+    for (const env of [{ COLUMNS: "500" }, { COLUMNS: undefined }]) {
+      const output = runPython(
+        path.join(".claude", "hooks", "statusline.py"),
+        statuslineRateLimitPayload(),
+        env,
+      );
+      const lines = output.trimEnd().split("\n");
+      expect(lines.length).toBe(1);
+      expect(lines[0]).toContain("5h 17%");
+      expect(lines[0]).toContain("7d 19%");
+    }
+  });
+
   it("[session-current-task] Python session-start hooks resolve session backslash refs without stale pointer", () => {
     setupTaskRepo();
     writeSessionContext("claude_session-a", ".trellis\\tasks\\issue-106");
@@ -2977,6 +3168,57 @@ describe("regression: current-task path normalization", () => {
     }
   });
 
+  it("[#356] inject-workflow-state.py exits when host leaves stdin open with no payload", async () => {
+    setupTaskRepo();
+    writeWorkflowStateHook();
+
+    const hookPath = path.join(
+      tmpDir,
+      ".trellis",
+      "hooks",
+      "inject-workflow-state.py",
+    );
+    const child = spawn(pythonCmd, [hookPath], {
+      cwd: tmpDir,
+      env: sessionEnv({ KIRO_PROJECT_DIR: tmpDir }),
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf-8");
+    child.stderr.setEncoding("utf-8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+
+    const result = await new Promise<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+      timedOut: boolean;
+    }>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve({ code: null, signal: "SIGKILL", timedOut: true });
+      }, 1500);
+      child.once("error", (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+      child.once("exit", (code, signal) => {
+        clearTimeout(timer);
+        resolve({ code, signal, timedOut: false });
+      });
+    });
+
+    expect(result.timedOut, stderr).toBe(false);
+    expect(result.code).toBe(0);
+    expect(stdout).toContain("<workflow-state>");
+  });
+
   // ------------------------------------------------------------
   // Legacy current_phase / next_action field removal (FP round 3 cleanup)
   // ------------------------------------------------------------
@@ -3285,7 +3527,7 @@ print(len(entries))
     }
   });
 
-  it("[workflow-state-r2] template workflow.md [workflow-state:planning] mentions artifact gates + optional jsonl manifests", () => {
+  it("[workflow-state-r2] template workflow.md [workflow-state:planning] mentions artifact gates + required jsonl curation", () => {
     const wf = templateWorkflowMd();
     const match = wf.match(
       /\[workflow-state:planning\]([\s\S]*?)\[\/workflow-state:planning\]/,
@@ -3294,7 +3536,82 @@ print(len(entries))
     const body = match?.[1] ?? "";
     expect(body).toMatch(/Lightweight: `prd\.md` can be enough/);
     expect(body).toMatch(/Complex: finish `prd\.md`, `design\.md`, and `implement\.md`/);
-    expect(body).toMatch(/implement\.jsonl|check\.jsonl/);
+    expect(body).toContain(
+      "curate `implement.jsonl` and `check.jsonl` as spec/research manifests before start",
+    );
+  });
+
+  it("[#292] workflow and brainstorm templates treat seed-only jsonl as not planning-ready", () => {
+    const wf = templateWorkflowMd();
+    expect(wf).not.toContain("seed-only manifests are tolerated by consumers");
+    expect(wf).not.toContain(
+      "curated when extra spec or research context is needed",
+    );
+    expect(wf).toContain(
+      'Ready gate: both `implement.jsonl` and `check.jsonl` must contain at least one real `{"file": "...", "reason": "..."}` entry before `task.py start`.',
+    );
+    expect(wf).toContain(
+      "Runtime consumers tolerate missing or seed-only manifests for compatibility, but that tolerance is not a planning-ready state.",
+    );
+    expect(wf).toContain(
+      "`implement.jsonl` and `check.jsonl` each contain at least one real curated entry (seed row does not count)",
+    );
+
+    const templateRoot = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "src",
+      "templates",
+    );
+    const brainstormFiles = [
+      "common/skills/brainstorm.md",
+      "codex/skills/brainstorm/SKILL.md",
+      "copilot/prompts/brainstorm.prompt.md",
+    ];
+
+    for (const relativePath of brainstormFiles) {
+      const content = fs.readFileSync(
+        path.join(templateRoot, relativePath),
+        "utf-8",
+      );
+      expect(content, relativePath).toContain(
+        "Sub-agent-dispatch tasks have real curated entries in both `implement.jsonl` and `check.jsonl`; seed-only manifests are not ready.",
+      );
+    }
+  });
+
+  it("[#320] brainstorm templates require lossless PRD convergence before start", () => {
+    const templateRoot = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "src",
+      "templates",
+    );
+    const brainstormFiles = [
+      "common/skills/brainstorm.md",
+      "codex/skills/brainstorm/SKILL.md",
+      "copilot/prompts/brainstorm.prompt.md",
+    ];
+
+    for (const relativePath of brainstormFiles) {
+      const content = fs.readFileSync(
+        path.join(templateRoot, relativePath),
+        "utf-8",
+      );
+      expect(content, relativePath).toContain(
+        "Before final review or `task.py start`, run the PRD convergence pass below.",
+      );
+      expect(content, relativePath).toContain("## PRD Convergence Pass");
+      expect(content, relativePath).toContain(
+        "Fold temporary brainstorm sections such as `What I already know`, `Assumptions`, and resolved `Open Questions`",
+      );
+      expect(content, relativePath).toContain(
+        "Preserve every file:line anchor, decision, constraint, requirement ID, and acceptance-criteria mapping.",
+      );
+      expect(content, relativePath).toContain(
+        "no unresolved temporary brainstorm sections, no duplicate facts across sections",
+      );
+    }
   });
 
   it("[workflow-state-r3-no_task] template workflow.md [workflow-state:no_task] block is present and well-formed", () => {
@@ -3467,7 +3784,7 @@ print(len(entries))
       { cwd: tmpDir, encoding: "utf-8" },
     );
 
-    expect(output).toContain("The Codex sub-agent definition auto-handles");
+    expect(output).toContain("The pull-based sub-agent definition auto-handles");
     expect(output).toContain(
       "Resolves the active task with `task.py current --source`",
     );
@@ -3840,7 +4157,7 @@ print(len(entries))
       { cwd: tmpDir, encoding: "utf-8" },
     );
 
-    // The [Kilo, Antigravity, Windsurf] inline block content surfaces:
+    // The [Kilo, Antigravity, Devin] inline block content surfaces:
     // it tells the main session to load trellis-before-dev directly.
     expect(output).toContain("trellis-before-dev");
     expect(output).toContain("Read `{TASK_DIR}/prd.md`");
@@ -4099,9 +4416,12 @@ describe("regression: platform additions (beta.9, beta.13, beta.16)", () => {
     expect(AI_TOOLS.antigravity.configDir).toBe(".agent/workflows");
   });
 
-  it("[windsurf] Windsurf platform is registered", () => {
-    expect(AI_TOOLS).toHaveProperty("windsurf");
-    expect(AI_TOOLS.windsurf.configDir).toBe(".windsurf/workflows");
+  it("[devin] Devin platform is registered (formerly Windsurf)", () => {
+    expect(AI_TOOLS).toHaveProperty("devin");
+    expect(AI_TOOLS.devin.configDir).toBe(".devin/workflows");
+    expect(AI_TOOLS.devin.name).toBe("Devin");
+    // Windsurf was renamed to Devin — the old key must be gone.
+    expect(AI_TOOLS).not.toHaveProperty("windsurf");
   });
 
   it("[qoder] Qoder platform is registered", () => {
@@ -4180,8 +4500,10 @@ describe("regression: cli_adapter platform support (beta.9, beta.13, beta.16)", 
     expect(commonCliAdapter).toContain(".agent");
   });
 
-  it("[windsurf] cli_adapter.py supports windsurf platform", () => {
-    expect(commonCliAdapter).toContain('"windsurf"');
+  it("[devin] cli_adapter.py supports devin platform (formerly windsurf)", () => {
+    expect(commonCliAdapter).toContain('"devin"');
+    expect(commonCliAdapter).toContain(".devin");
+    // Legacy .windsurf/ is still recognized for back-compat detection.
     expect(commonCliAdapter).toContain(".windsurf");
   });
 
@@ -4454,7 +4776,7 @@ describe("regression: cli_adapter platform support (beta.9, beta.13, beta.16)", 
     expect(commonCliAdapter).toContain(".kiro");
     expect(commonCliAdapter).toContain(".gemini");
     expect(commonCliAdapter).toContain(".agent");
-    expect(commonCliAdapter).toContain(".windsurf");
+    expect(commonCliAdapter).toContain(".devin");
     expect(commonCliAdapter).toContain(".qoder");
     expect(commonCliAdapter).toContain(".codebuddy");
     expect(commonCliAdapter).toContain(".github/copilot");
@@ -4680,7 +5002,10 @@ describe("regression: migration manifest consistency", () => {
         to: (n) => `.agent/skills/trellis-${n}/SKILL.md`,
       },
       {
-        id: "windsurf",
+        // Devin shipped as "windsurf" (.windsurf/) at 0.5.0-beta.0 — this
+        // historical manifest predates the Windsurf → Devin rename, so the
+        // rename entries here are still keyed on the old .windsurf/ paths.
+        id: "devin (legacy .windsurf/)",
         from: (n) => `.windsurf/workflows/trellis-${n}.md`,
         to: (n) => `.windsurf/skills/trellis-${n}/SKILL.md`,
       },
@@ -4783,16 +5108,16 @@ describe("regression: collectTemplates paths match init directory structure (0.3
     }
   });
 
-  it("[windsurf] windsurf uses workflows/ instead of commands/trellis/", () => {
-    const templates = collectPlatformTemplates("windsurf");
+  it("[devin] devin uses workflows/ instead of commands/trellis/", () => {
+    const templates = collectPlatformTemplates("devin");
     expect(templates).toBeInstanceOf(Map);
     if (!templates) return;
     const keys = [...templates.keys()];
     for (const key of keys) {
       expect(
-        key.startsWith(".windsurf/workflows/") ||
-          key.startsWith(".windsurf/skills/"),
-        `windsurf path should use workflows/ or skills/: ${key}`,
+        key.startsWith(".devin/workflows/") ||
+          key.startsWith(".devin/skills/"),
+        `devin path should use workflows/ or skills/: ${key}`,
       ).toBe(true);
     }
   });
@@ -5456,7 +5781,7 @@ describe("regression: Gemini CLI 0.40.x template compatibility (#224)", () => {
         `Codex and Gemini disagree on ${filePath} — last-writer-wins would corrupt the shared skill`,
       ).toBe(codexContent);
     }
-    // At least the 5 shared workflow skills + bundled trellis-meta files must
+    // At least the shared common skills + bundled trellis-meta files must
     // overlap. If this drops to 0 the assertion above is silently passing.
     expect(overlapCount).toBeGreaterThan(0);
   });
@@ -5507,19 +5832,19 @@ describe("regression: Gemini CLI 0.40.x template compatibility (#224)", () => {
     }
   });
 
-  it("[#224] needsCodexUpgrade looks for Codex-only command-as-skill markers, not bare `.agents/skills/` prefix", () => {
-    // Regression: with Gemini also writing to `.agents/skills/` (5 shared
-    // workflow skills only), the legacy-Codex detector previously triggered
+  it("[#224] needsCodexUpgrade looks for command-as-skill markers, not bare `.agents/skills/` prefix", () => {
+    // Regression: with Gemini also writing to `.agents/skills/` (shared common
+    // skills only), the legacy-Codex detector previously triggered
     // a false-positive `.codex/` install on every fresh `init --gemini` +
-    // `update` cycle. The fix narrows detection to Codex-only files
-    // (`trellis-continue/SKILL.md`, `trellis-finish-work/SKILL.md`) which
-    // Gemini does NOT write (it puts continue/finish-work under
-    // `.gemini/commands/trellis/*.toml`).
+    // `update` cycle. The fix narrows detection to command-as-skill files
+    // (`trellis-continue/SKILL.md`, `trellis-finish-work/SKILL.md`) and the
+    // update integration suite covers platforms such as ZCode that share
+    // `.agents/skills/` but must not trigger the legacy Codex backfill.
     const updateSrc = fs.readFileSync(
       path.resolve(repoRoot, "packages/cli/src/commands/update.ts"),
       "utf-8",
     );
-    // Must check for Codex-only command-as-skill markers, not the bare
+    // Must check for command-as-skill markers, not the bare
     // `.agents/skills/` prefix.
     expect(updateSrc).toMatch(
       /\.agents\/skills\/trellis-continue\/SKILL\.md/,

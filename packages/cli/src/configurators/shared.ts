@@ -8,6 +8,20 @@
 import type { TemplateContext } from "../types/ai-tools.js";
 
 /**
+ * Per-platform configure options threaded from `trellis init` flags.
+ * Defined here (not in index.ts) so configurators can reference it without
+ * a circular import.
+ */
+export interface PlatformConfigureOptions {
+  /**
+   * Claude Code only: install the opt-in Trellis statusLine
+   * (`trellis init --with-statusline`). Off by default — see
+   * `configureClaude` in `claude.ts`.
+   */
+  withStatusline?: boolean;
+}
+
+/**
  * Module-level resolved Python command, set by the init flow after probing.
  *
  * Windows commonly has Python under one of: `python`, `python3`, `py -3` —
@@ -162,15 +176,15 @@ export function resolvePlaceholders(
  * Identical to {@link resolvePlaceholders} except that {@link CMD_REF} is
  * rendered in a platform-neutral form (`` `name` (Trellis command) ``)
  * instead of substituting a platform-specific prefix. This is the only
- * placeholder that varies between platforms in the 5 shared workflow skills
- * (`brainstorm`, `before-dev`, `check`, `break-loop`, `update-spec`), so
+ * placeholder that varies between platforms in the auto-triggered skill templates
+ * from `common/skills/`, so
  * neutralizing it makes the rendered SKILL.md files byte-identical regardless
  * of which Trellis configurator wrote them — eliminating the
  * "last-writer-wins" collision when both Codex and Gemini target
  * `.agents/skills/`.
  *
  * `{{CLI_FLAG}}`, `{{EXECUTOR_AI}}`, `{{USER_ACTION_LABEL}}`, conditionals,
- * and `{{PYTHON_CMD}}` are still resolved from the platform context. The 5
+ * and `{{PYTHON_CMD}}` are still resolved from the platform context. The
  * shared skills do not use those placeholders, so they remain platform-
  * neutral. Codex-only skill files (e.g. `trellis-continue/SKILL.md`,
  * `trellis-finish-work/SKILL.md` written via `resolveAllAsSkillsNeutral`) DO
@@ -196,8 +210,8 @@ export function resolvePlaceholdersNeutral(
   result = result.replace(RE_USER_ACTION_LABEL, context.userActionLabel);
   result = result.replace(RE_CLI_FLAG, context.cliFlag);
 
-  // Conditional blocks (resolved per platform — none of the 5 shared skills
-  // use conditionals, but Codex-only command-as-skill files might in future).
+  // Conditional blocks (resolved per platform — none of the auto-triggered
+  // shared skills use conditionals, but Codex-only command-as-skill files might in future).
   const flagValues: Record<(typeof CONDITIONAL_FLAGS)[number], boolean> = {
     AGENT_CAPABLE: context.agentCapable,
     HAS_HOOKS: context.hasHooks,
@@ -315,16 +329,23 @@ export interface ResolvedSkillFile {
 /**
  * Filter command templates based on platform capabilities.
  *
- * `start.md` is only emitted for agent-less platforms (kilo, antigravity,
- * windsurf). On agent-capable platforms, the session-start hook / plugin
- * already injects the workflow overview, so a user-facing `start` command
- * would be redundant.
+ * `start.md` is stripped only on platforms that are BOTH `agentCapable` AND
+ * `hasHooks` — those platforms (Claude Code, Cursor, Kiro, Gemini, Qoder,
+ * CodeBuddy, Copilot, Droid, Pi) have a SessionStart-style hook that
+ * auto-injects the workflow overview, so a user-facing `start` would be
+ * redundant.
+ *
+ * `agentCapable && !hasHooks` platforms (Codex, ZCode, OpenCode, Reasonix)
+ * have no such hook (or use an out-of-band plugin), so they need the
+ * user-invocable `trellis-start` skill / `start.md` command as fallback.
+ * Agent-less platforms (Kilo, Antigravity, Devin) also keep `start` since
+ * they rely entirely on user-triggered workflows.
  */
 function filterCommands(
   templates: CommonTemplate[],
   ctx: TemplateContext,
 ): CommonTemplate[] {
-  if (ctx.agentCapable) {
+  if (ctx.agentCapable && ctx.hasHooks) {
     return templates.filter((t) => t.name !== "start");
   }
   return templates;
@@ -365,7 +386,7 @@ export function resolveCommands(ctx: TemplateContext): ResolvedTemplate[] {
 }
 
 /**
- * Resolve only the 5 skill templates with trellis- prefix + SKILL.md frontmatter.
+ * Resolve the auto-triggered skill templates from `common/skills/` with trellis- prefix + SKILL.md frontmatter.
  * Used by "both" platforms for the auto-triggered skills.
  */
 export function resolveSkills(ctx: TemplateContext): ResolvedTemplate[] {
@@ -397,7 +418,7 @@ export function resolveSkillsNeutral(ctx: TemplateContext): ResolvedTemplate[] {
 
 /**
  * Same as {@link resolveAllAsSkills} but uses
- * {@link resolvePlaceholdersNeutral} for the 5 shared skills. The 2 command
+ * {@link resolvePlaceholdersNeutral} for the shared common skills. The 2 command
  * templates (continue, finish-work) folded into the skill set still resolve
  * `{{CLI_FLAG}}` / `{{PYTHON_CMD}}` per platform — only Codex writes those
  * files into `.agents/skills/`, so byte-identity isn't required there.
@@ -416,38 +437,6 @@ export function resolveAllAsSkillsNeutral(
       resolvePlaceholdersNeutral(tmpl.content, ctx),
     ),
   }));
-}
-
-/**
- * Codex needs a `trellis-start` skill in `.agents/skills/` so the
- * `<trellis-bootstrap>` notice from `inject-workflow-state.py` resolves
- * to an actual skill file (the bootstrap notice tells the AI to invoke
- * `$trellis-start` once on the first `no_task` turn — added in 0.5.5
- * after the Codex SessionStart hook was removed for de-recursion).
- *
- * Built from `common/commands/start.md` + skill frontmatter; renders
- * neutrally so init and update produce byte-identical output. Returns
- * `null` if the template is missing (defensive — should never happen).
- *
- * Used by both `configureCodex()` (init path, file write) and
- * `collectPlatformTemplates.codex` (update path, manifest map). Both
- * paths must agree, otherwise upgraded users miss the file (which broke
- * 0.4.x → 0.5.5/0.5.6 upgrades — see #247-style symptom: AI reports
- * "no .agents/skills/trellis-start/SKILL.md" because update only ran
- * `collectTemplates` and never wrote the file).
- */
-export function resolveCodexTrellisStartSkill(
-  ctx: TemplateContext,
-): ResolvedTemplate | null {
-  const startTemplate = getCommandTemplates().find((t) => t.name === "start");
-  if (!startTemplate) return null;
-  return {
-    name: "trellis-start",
-    content: wrapWithSkillFrontmatter(
-      "trellis-start",
-      resolvePlaceholdersNeutral(startTemplate.content, ctx),
-    ),
-  };
 }
 
 /**

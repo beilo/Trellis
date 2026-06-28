@@ -26,6 +26,10 @@ import {
   getSettingsTemplate as getPiSettings,
 } from "../../src/templates/pi/index.js";
 import {
+  settingsTemplate as claudeSettingsTemplate,
+  getStatuslineHook,
+} from "../../src/templates/claude/index.js";
+import {
   resolvePlaceholders,
   resolveAllAsSkills,
   resolveAllAsSkillsNeutral,
@@ -117,12 +121,20 @@ describe("getConfiguredPlatforms", () => {
     expect(result.has("antigravity")).toBe(true);
   });
 
-  it("detects .windsurf/workflows directory as windsurf", () => {
+  it("detects .devin/workflows directory as devin", () => {
+    fs.mkdirSync(path.join(tmpDir, ".devin", "workflows"), {
+      recursive: true,
+    });
+    const result = getConfiguredPlatforms(tmpDir);
+    expect(result.has("devin")).toBe(true);
+  });
+
+  it("detects legacy .windsurf/workflows directory as devin (back-compat)", () => {
     fs.mkdirSync(path.join(tmpDir, ".windsurf", "workflows"), {
       recursive: true,
     });
     const result = getConfiguredPlatforms(tmpDir);
-    expect(result.has("windsurf")).toBe(true);
+    expect(result.has("devin")).toBe(true);
   });
 
   it("detects .kiro/skills directory as kiro", () => {
@@ -265,9 +277,10 @@ describe("configurePlatform", () => {
     // Codex writes shared skills under `.agents/skills/` using the neutral
     // placeholder resolver so the rendered files are byte-identical to
     // Gemini's writes for the same skill names — see issue #224 fix.
-    // Plus a Codex-specific `trellis-start` skill referenced by the
-    // <trellis-bootstrap> notice in inject-workflow-state.py (the SessionStart
-    // hook was removed for de-recursion).
+    // `trellis-start` is included via `resolveAllAsSkillsNeutral` directly —
+    // it's the user-invocable fallback referenced by the <trellis-bootstrap>
+    // notice in inject-workflow-state.py (the SessionStart hook was removed
+    // for de-recursion).
     const expected = resolveAllAsSkillsNeutral(AI_TOOLS.codex.templateContext);
     const skillsRoot = path.join(tmpDir, ".agents", "skills");
     const actualNames = fs
@@ -277,11 +290,7 @@ describe("configurePlatform", () => {
       .sort();
 
     expect(actualNames).toEqual(
-      [
-        ...expected.map((s) => s.name),
-        ...BUNDLED_SKILL_NAMES,
-        "trellis-start",
-      ].sort(),
+      [...expected.map((s) => s.name), ...BUNDLED_SKILL_NAMES].sort(),
     );
 
     for (const skill of expected) {
@@ -386,6 +395,76 @@ describe("configurePlatform", () => {
     expect(fs.existsSync(path.join(skillsRoot, BUNDLED_REFERENCE))).toBe(true);
   });
 
+  it("configurePlatform('kiro') writes main agent, IDE hook, and shared hooks", async () => {
+    await configurePlatform("kiro", tmpDir);
+
+    const expectedPythonCmd =
+      process.platform === "win32" ? "python" : "python3";
+
+    // Shared hooks now include per-turn + session-start, not just subagent.
+    const hooksDir = path.join(tmpDir, ".kiro", "hooks");
+    for (const script of [
+      "inject-workflow-state.py",
+      "session-start.py",
+      "inject-subagent-context.py",
+    ]) {
+      expect(fs.existsSync(path.join(hooksDir, script))).toBe(true);
+    }
+
+    // Main `trellis` agent wires per-turn + session-start hooks; PYTHON_CMD
+    // resolved.
+    const trellisPath = path.join(tmpDir, ".kiro", "agents", "trellis.json");
+    expect(fs.existsSync(trellisPath)).toBe(true);
+    const trellisRaw = fs.readFileSync(trellisPath, "utf-8");
+    expect(trellisRaw).not.toContain("{{PYTHON_CMD}}");
+    const trellis = JSON.parse(trellisRaw) as {
+      resources?: string[];
+      hooks?: Record<string, { command: string }[]>;
+    };
+    expect(trellis.hooks?.userPromptSubmit?.[0].command).toBe(
+      `${expectedPythonCmd} .kiro/hooks/inject-workflow-state.py`,
+    );
+    expect(trellis.hooks?.agentSpawn?.[0].command).toBe(
+      `${expectedPythonCmd} .kiro/hooks/session-start.py`,
+    );
+    expect(trellis.resources).toContain("file://.trellis/workflow.md");
+
+    // 3 sub-agents keep their inject-subagent-context.py spawn hook.
+    for (const name of [
+      "trellis-implement",
+      "trellis-check",
+      "trellis-research",
+    ]) {
+      const sub = JSON.parse(
+        fs.readFileSync(
+          path.join(tmpDir, ".kiro", "agents", `${name}.json`),
+          "utf-8",
+        ),
+      ) as { hooks?: Record<string, { command: string }[]> };
+      expect(sub.hooks?.agentSpawn?.[0].command).toBe(
+        `${expectedPythonCmd} .kiro/hooks/inject-subagent-context.py`,
+      );
+    }
+
+    // IDE `.kiro.hook` written with PYTHON_CMD resolved and valid schema.
+    const ideHookPath = path.join(
+      hooksDir,
+      "trellis-workflow-state.kiro.hook",
+    );
+    expect(fs.existsSync(ideHookPath)).toBe(true);
+    const ideRaw = fs.readFileSync(ideHookPath, "utf-8");
+    expect(ideRaw).not.toContain("{{PYTHON_CMD}}");
+    const ideHook = JSON.parse(ideRaw) as {
+      when: { type: string };
+      then: { type: string; command: string };
+    };
+    expect(ideHook.when.type).toBe("promptSubmit");
+    expect(ideHook.then.type).toBe("runCommand");
+    expect(ideHook.then.command).toBe(
+      `${expectedPythonCmd} .kiro/hooks/inject-workflow-state.py`,
+    );
+  });
+
   it("configurePlatform('gemini') creates .gemini directory", async () => {
     await configurePlatform("gemini", tmpDir);
     expect(fs.existsSync(path.join(tmpDir, ".gemini"))).toBe(true);
@@ -475,35 +554,33 @@ describe("configurePlatform", () => {
     }
   });
 
-  it("configurePlatform('windsurf') creates .windsurf/workflows directory", async () => {
-    await configurePlatform("windsurf", tmpDir);
-    expect(fs.existsSync(path.join(tmpDir, ".windsurf", "workflows"))).toBe(
-      true,
-    );
+  it("configurePlatform('devin') creates .devin/workflows directory", async () => {
+    await configurePlatform("devin", tmpDir);
+    expect(fs.existsSync(path.join(tmpDir, ".devin", "workflows"))).toBe(true);
   });
 
-  it("configurePlatform('windsurf') writes workflows + skills", async () => {
-    await configurePlatform("windsurf", tmpDir);
+  it("configurePlatform('devin') writes workflows + skills", async () => {
+    await configurePlatform("devin", tmpDir);
 
     // Commands as workflows
-    const workflowsRoot = path.join(tmpDir, ".windsurf", "workflows");
+    const workflowsRoot = path.join(tmpDir, ".devin", "workflows");
     expect(fs.existsSync(workflowsRoot)).toBe(true);
     const wfFiles = fs
       .readdirSync(workflowsRoot)
       .filter((f) => f.endsWith(".md"));
     expect(wfFiles.length).toBe(
-      resolveCommands(AI_TOOLS.windsurf.templateContext).length,
+      resolveCommands(AI_TOOLS.devin.templateContext).length,
     );
 
     // Skills
-    const skillsDir = path.join(tmpDir, ".windsurf", "skills");
+    const skillsDir = path.join(tmpDir, ".devin", "skills");
     expect(fs.existsSync(skillsDir)).toBe(true);
     const skillDirs = fs
       .readdirSync(skillsDir, { withFileTypes: true })
       .filter((e) => e.isDirectory());
     expect(skillDirs.length).toBe(
-      resolveSkills(AI_TOOLS.windsurf.templateContext).length +
-        resolveBundledSkills(AI_TOOLS.windsurf.templateContext).filter((file) =>
+      resolveSkills(AI_TOOLS.devin.templateContext).length +
+        resolveBundledSkills(AI_TOOLS.devin.templateContext).filter((file) =>
           file.relativePath.endsWith("/SKILL.md"),
         ).length,
     );
@@ -577,6 +654,40 @@ describe("configurePlatform", () => {
       expect(file).not.toMatch(/\.js\.map$/);
       expect(file).not.toMatch(/\.d\.ts\.map$/);
     }
+  });
+
+  it("configurePlatform('zcode') keeps command fallbacks out of shared .agents skills", async () => {
+    await configurePlatform("zcode", tmpDir);
+
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, ".zcode", "commands", "trellis", "start.md"),
+      ),
+    ).toBe(true);
+    expect(
+      fs.existsSync(
+        path.join(tmpDir, ".agents", "skills", "trellis-start", "SKILL.md"),
+      ),
+    ).toBe(false);
+    expect(
+      fs.existsSync(
+        path.join(
+          tmpDir,
+          ".agents",
+          "skills",
+          "trellis-continue",
+          "SKILL.md",
+        ),
+      ),
+    ).toBe(false);
+
+    const templates = collectPlatformTemplates("zcode");
+    expect(templates?.has(".zcode/commands/trellis/start.md")).toBe(true);
+    expect(templates?.has(".agents/skills/trellis-start/SKILL.md")).toBe(false);
+    expect(templates?.has(".agents/skills/trellis-continue/SKILL.md")).toBe(
+      false,
+    );
+    expect(templates?.has(".agents/skills/trellis-check/SKILL.md")).toBe(true);
   });
 
   it("configurePlatform('codebuddy') creates .codebuddy directory", async () => {
@@ -712,6 +823,84 @@ describe("configurePlatform", () => {
     ).toBe(false);
   });
 
+  it("claude-code default settings.json is byte-identical to the resolved template (statusline off)", async () => {
+    await configurePlatform("claude-code", tmpDir, { withStatusline: false });
+    const content = fs.readFileSync(
+      path.join(tmpDir, ".claude", "settings.json"),
+      "utf-8",
+    );
+    expect(content).toBe(resolvePlaceholders(claudeSettingsTemplate));
+    expect(content).not.toContain("statusLine");
+  });
+
+  it("claude-code with statusline opt-in installs statusline.py and statusLine settings entry", async () => {
+    await configurePlatform("claude-code", tmpDir, { withStatusline: true });
+
+    const hookPath = path.join(tmpDir, ".claude", "hooks", "statusline.py");
+    expect(fs.existsSync(hookPath)).toBe(true);
+    expect(fs.readFileSync(hookPath, "utf-8")).toBe(
+      replacePythonCommandLiterals(getStatuslineHook()),
+    );
+
+    const content = fs.readFileSync(
+      path.join(tmpDir, ".claude", "settings.json"),
+      "utf-8",
+    );
+    expect(content).not.toContain("{{PYTHON_CMD}}");
+    const settings = JSON.parse(content) as Record<string, unknown>;
+    expect(settings.statusLine).toEqual({
+      type: "command",
+      command: replacePythonCommandLiterals(
+        "python3 .claude/hooks/statusline.py",
+      ),
+    });
+    // statusLine is appended at the END — byte-parity with update's
+    // preserveExistingClaudeStatusLine (parse → assign → stringify), so a
+    // fresh opted-in project shows zero settings.json diff on update
+    expect(Object.keys(settings)).toEqual([
+      "env",
+      "hooks",
+      "enabledPlugins",
+      "statusLine",
+    ]);
+    // Everything besides statusLine is unchanged from the default template
+    const expected = JSON.parse(
+      resolvePlaceholders(claudeSettingsTemplate),
+    ) as Record<string, unknown>;
+    expect(settings.env).toEqual(expected.env);
+    expect(settings.hooks).toEqual(expected.hooks);
+    expect(settings.enabledPlugins).toEqual(expected.enabledPlugins);
+  });
+
+  it("withStatusline option leaves all other platforms unaffected", async () => {
+    for (const id of PLATFORM_IDS) {
+      if (id === "claude-code") continue;
+      await configurePlatform(id, tmpDir, { withStatusline: true });
+    }
+
+    const walk = (dir: string): string[] => {
+      const files: string[] = [];
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          files.push(...walk(full));
+        } else {
+          files.push(full);
+        }
+      }
+      return files;
+    };
+
+    for (const file of walk(tmpDir)) {
+      expect(path.basename(file)).not.toBe("statusline.py");
+      if (path.basename(file) === "settings.json") {
+        expect(
+          JSON.parse(fs.readFileSync(file, "utf-8")),
+        ).not.toHaveProperty("statusLine");
+      }
+    }
+  });
+
   it("cursor configuration includes commands directory", async () => {
     await configurePlatform("cursor", tmpDir);
     expect(fs.existsSync(path.join(tmpDir, ".cursor", "commands"))).toBe(true);
@@ -779,7 +968,7 @@ describe("configurePlatform", () => {
     ).toBe(true);
     expect(
       fs.existsSync(path.join(tmpDir, ".pi", "prompts", "trellis-start.md")),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       fs.existsSync(
         path.join(tmpDir, ".pi", "skills", "trellis-check", "SKILL.md"),
@@ -889,7 +1078,7 @@ describe("configurePlatform", () => {
   it("collectPlatformTemplates('pi') maps prompts, skills, agents, extension, and settings", () => {
     const templates = collectPlatformTemplates("pi");
     expect(templates).toBeInstanceOf(Map);
-    expect(templates?.get(".pi/prompts/trellis-start.md")).toBeUndefined();
+    expect(templates?.get(".pi/prompts/trellis-start.md")).toBeDefined();
     expect(templates?.get(".pi/prompts/trellis-finish-work.md")).toBeDefined();
     expect(templates?.get(".pi/prompts/trellis-continue.md")).toBeDefined();
     expect(templates?.get(".pi/skills/trellis-check/SKILL.md")).toBeDefined();

@@ -12,7 +12,6 @@ import {
   resolvePlaceholders,
   resolveAllAsSkillsNeutral,
   resolveBundledSkills,
-  resolveCodexTrellisStartSkill,
   applyPullBasedPreludeToml,
   writeSkills,
   writeSharedHooks,
@@ -27,8 +26,8 @@ import {
  */
 export async function configureCodex(cwd: string): Promise<void> {
   // Shared skills from common source → .agents/skills/
-  // Uses the neutral placeholder resolver so the 5 shared workflow skills
-  // (brainstorm, before-dev, check, break-loop, update-spec) render to the
+  // Uses the neutral placeholder resolver so the auto-triggered skill templates
+  // from `common/skills/` render to the
   // same bytes regardless of which platform writes them — required because
   // Gemini CLI 0.40+ also targets `.agents/skills/` (last-writer-wins is
   // safe when both writers produce identical output).
@@ -38,26 +37,6 @@ export async function configureCodex(cwd: string): Promise<void> {
     resolveAllAsSkillsNeutral(AI_TOOLS.codex.templateContext),
     resolveBundledSkills(AI_TOOLS.codex.templateContext),
   );
-
-  // Additionally write `trellis-start` to .agents/skills/ — Codex-specific.
-  // The SessionStart hook was removed in 0.5.5 (de-recursion); inject-workflow-state.py
-  // injects a `<trellis-bootstrap>` block on no_task turns instructing the AI to
-  // invoke `$trellis-start` to load workflow context. Without this skill, that
-  // invocation has nothing to resolve. Other agent-capable platforms keep their
-  // working SessionStart hooks and don't need this.
-  // Must stay in sync with `collectPlatformTemplates.codex.collectTemplates`
-  // (configurators/index.ts) — both share `resolveCodexTrellisStartSkill`.
-  const trellisStart = resolveCodexTrellisStartSkill(
-    AI_TOOLS.codex.templateContext,
-  );
-  if (trellisStart) {
-    const trellisStartDir = path.join(sharedSkillsRoot, trellisStart.name);
-    ensureDir(trellisStartDir);
-    await writeFile(
-      path.join(trellisStartDir, "SKILL.md"),
-      trellisStart.content,
-    );
-  }
 
   const codexRoot = path.join(cwd, ".codex");
 

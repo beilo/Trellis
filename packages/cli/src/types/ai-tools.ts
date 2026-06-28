@@ -16,13 +16,15 @@ export type AITool =
   | "kiro"
   | "gemini"
   | "antigravity"
-  | "windsurf"
+  | "devin"
   | "qoder"
   | "codebuddy"
   | "copilot"
   | "droid"
   | "pi"
-  | "reasonix";
+  | "reasonix"
+  | "zcode"
+  | "trae";
 
 /**
  * Template directory categories
@@ -37,13 +39,15 @@ export type TemplateDir =
   | "kiro"
   | "gemini"
   | "antigravity"
-  | "windsurf"
+  | "devin"
   | "qoder"
   | "codebuddy"
   | "copilot"
   | "droid"
   | "pi"
-  | "reasonix";
+  | "reasonix"
+  | "zcode"
+  | "trae";
 
 /**
  * CLI flag names for platform selection (e.g., --claude, --cursor, --kilo, --kiro, --gemini, --antigravity)
@@ -58,13 +62,15 @@ export type CliFlag =
   | "kiro"
   | "gemini"
   | "antigravity"
-  | "windsurf"
+  | "devin"
   | "qoder"
   | "codebuddy"
   | "copilot"
   | "droid"
   | "pi"
-  | "reasonix";
+  | "reasonix"
+  | "zcode"
+  | "trae";
 
 /**
  * Template context for placeholder resolution.
@@ -77,9 +83,15 @@ export interface TemplateContext {
   executorAI:
     | "Bash scripts or Task calls"
     | "Bash scripts or tool calls"
+    | "Bash scripts or Agent calls"
     | "Bash scripts or file reads";
   /** Label for user-invocable actions */
-  userActionLabel: "Slash commands" | "Skills" | "Workflows" | "Prompts";
+  userActionLabel:
+    | "Slash commands"
+    | "Skills"
+    | "Workflows"
+    | "Prompts"
+    | "Commands";
   /** Platform supports spawning sub-agents with isolated context */
   agentCapable: boolean;
   /** Platform has hook system (SessionStart, PreToolUse) */
@@ -267,12 +279,12 @@ export const AI_TOOLS: Record<AITool, AIToolConfig> = {
       cliFlag: "antigravity",
     },
   },
-  windsurf: {
-    name: "Windsurf",
-    templateDirs: ["common", "windsurf"],
-    configDir: ".windsurf/workflows",
-    extraManagedPaths: [".windsurf/skills"],
-    cliFlag: "windsurf",
+  devin: {
+    name: "Devin",
+    templateDirs: ["common", "devin"],
+    configDir: ".devin/workflows",
+    extraManagedPaths: [".devin/skills"],
+    cliFlag: "devin",
     defaultChecked: false,
     hasPythonHooks: false,
     templateContext: {
@@ -281,7 +293,7 @@ export const AI_TOOLS: Record<AITool, AIToolConfig> = {
       userActionLabel: "Workflows",
       agentCapable: false,
       hasHooks: false,
-      cliFlag: "windsurf",
+      cliFlag: "devin",
     },
   },
   qoder: {
@@ -384,6 +396,40 @@ export const AI_TOOLS: Record<AITool, AIToolConfig> = {
       agentCapable: true,
       hasHooks: false,
       cliFlag: "reasonix",
+    },
+  },
+  zcode: {
+    name: "ZCode",
+    templateDirs: ["common", "zcode"],
+    configDir: ".zcode",
+    supportsAgentSkills: true,
+    extraManagedPaths: [".zcode/cli/agents", ".zcode/commands"],
+    cliFlag: "zcode",
+    defaultChecked: false,
+    hasPythonHooks: false,
+    templateContext: {
+      cmdRefPrefix: "/trellis:",
+      executorAI: "Bash scripts or Agent calls",
+      userActionLabel: "Skills",
+      agentCapable: true,
+      hasHooks: false,
+      cliFlag: "zcode",
+    },
+  },
+  trae: {
+    name: "Trae",
+    templateDirs: ["common", "trae"],
+    configDir: ".trae",
+    cliFlag: "trae",
+    defaultChecked: false,
+    hasPythonHooks: true,
+    templateContext: {
+      cmdRefPrefix: "/trellis-",
+      executorAI: "Bash scripts or tool calls",
+      userActionLabel: "Commands",
+      agentCapable: true,
+      hasHooks: true,
+      cliFlag: "trae",
     },
   },
 };
