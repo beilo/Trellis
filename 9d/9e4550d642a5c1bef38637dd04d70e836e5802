@@ -1,0 +1,21 @@
+packages/cli/src/templates/trellis/workflow.md
+  s_0c2acf45601f36::t_c9783d1d3b3b14 218,221,227,238,247,260,592,635,640,642,655,664-665
+packages/cli/test/regression.test.ts
+  s_0c2acf45601f36::t_c9783d1d3b3b14 3561,3710
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "9d9e4550d642a5c1bef38637dd04d70e836e5802",
+  "prompts": {},
+  "sessions": {
+    "s_0c2acf45601f36": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f6557-903e-72bd-892c-23915ac17245",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "leipeng <leipeng950504@gmail.com>"
+    }
+  }
+}
