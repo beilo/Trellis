@@ -204,10 +204,10 @@ Which breadcrumbs actually fire in normal flow:
 preserve the runtime gates that cannot be recovered from model memory:
 `no_task` triages and asks for task-creation consent; planning distinguishes
 lightweight PRD-only tasks from complex tasks requiring `prd.md`, `design.md`,
-and `implement.md`; in-progress keeps the commit step reachable before
-`/trellis:finish-work`. See:
+and `implement.md`; in-progress keeps both the Phase 3.4 commit gate and the
+Phase 3.5 dirty-worktree/archive gate reachable. See:
 
-- `test that workflow.md [workflow-state:in_progress] mentions commit (Phase 3.4)`
+- `test that workflow.md preserves required finish gates`
 - `test that workflow.md [workflow-state:planning] mentions planning artifact gate`
 - `test that workflow.md [workflow-state:no_task] asks for task-creation consent`
 

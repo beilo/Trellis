@@ -215,16 +215,17 @@ Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `trellis-bef
 - 2.3 Rollback `[on demand]`
 
 <!-- Per-turn breadcrumb: shown while status='in_progress'.
-     Scope: all of Phase 2 + Phase 3.2-3.4 (status stays 'in_progress' from
+     Scope: all of Phase 2 + Phase 3.2-3.5 (status stays 'in_progress' from
      task.py start until task.py archive; only archive flips it). The body
      therefore must cover every required step from implementation through
-     commit, including Phase 3.3 spec update and Phase 3.4 commit. -->
+     archive, including Phase 3.3 spec update, Phase 3.4 commit, and the
+     Phase 3.5 dirty-worktree gate. -->
 
 Sub-agent dispatch protocol applies to all platforms and all sub-agents, including class-2 Codex/Copilot/Gemini/Qoder and `trellis-research`: every dispatch prompt starts with `Active task: <task path from task.py current>` before role-specific instructions.
 
 [workflow-state:in_progress]
 Tools: `trellis-implement` / `trellis-research` are sub-agent types only (Task/Agent tool, NOT Skill; there is no skill by these names). `trellis-update-spec` is a skill. `trellis-check` exists as both; prefer the Agent form when verifying after code changes.
-Flow: `trellis-implement` -> `trellis-check` -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
+Flow: `trellis-implement` -> `trellis-check` -> `trellis-update-spec` -> commit (Phase 3.4) -> verify and archive (Phase 3.5).
 Main-session default: dispatch implement/check sub-agents. Sub-agent self-exemption: if already running as `trellis-implement`, do NOT spawn another `trellis-implement` or `trellis-check`; if already running as `trellis-check`, do NOT spawn another `trellis-check` or `trellis-implement`. Dispatch is main session only.
 Dispatch prompt starts with `Active task: <task path from task.py current>`. Read context: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`.
 [/workflow-state:in_progress]
@@ -235,7 +236,7 @@ Dispatch prompt starts with `Active task: <task path from task.py current>`. Rea
      instead of dispatching sub-agents. -->
 
 [workflow-state:in_progress-inline]
-Flow: `trellis-before-dev` -> edit -> `trellis-check` -> validation -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
+Flow: `trellis-before-dev` -> edit -> `trellis-check` -> validation -> `trellis-update-spec` -> commit (Phase 3.4) -> verify and archive (Phase 3.5).
 Do not dispatch implement/check sub-agents in inline mode.
 Read context: `prd.md` -> `design.md if present` -> `implement.md if present`, plus relevant spec/research loaded by skills.
 [/workflow-state:in_progress-inline]
@@ -244,7 +245,7 @@ Read context: `prd.md` -> `design.md if present` -> `implement.md if present`, p
 - 3.2 Debug retrospective `[on demand]`
 - 3.3 Spec update `[required · once]`
 - 3.4 Commit changes `[required · once]`
-- 3.5 Wrap-up reminder
+- 3.5 Verify and archive `[required · once]`
 
 > Note: step 3.1 was folded into 2.2 (last-iteration full-scope check) and 3.4 (commit preamble). Numbering kept stable to avoid breaking external references.
 
@@ -257,7 +258,7 @@ Read context: `prd.md` -> `design.md if present` -> `implement.md if present`, p
      channel as the live blocks. -->
 
 [workflow-state:completed]
-Code committed. Run `/trellis:finish-work`; if dirty, return to Phase 3.4 first.
+Code committed and task archived. No session journal is required.
 [/workflow-state:completed]
 
 ### Rules
@@ -589,7 +590,7 @@ Update the docs under `.trellis/spec/` accordingly. Even if the conclusion is "n
 
 **Spec-sync preamble**: before drafting commits, ask: did this task fix a bug or surface non-obvious knowledge that should land in `.trellis/spec/` so future-you (or future-AI) doesn't repeat the mistake? If yes, return to Phase 3.3 first — spec writes belong in the same task's commit batch, not as a forgotten follow-up.
 
-The AI drives a batched commit of this task's code changes so `/finish-work` can run cleanly afterwards. Goal: produce work commits FIRST, then bookkeeping (archive + journal) commits land after — never interleaved.
+The AI drives a batched commit of this task's code changes before archival. Goal: produce work commits first, then archive the completed task.
 
 **Step-by-step**:
 
@@ -632,14 +633,44 @@ The AI drives a batched commit of this task's code changes so `/finish-work` can
 7. **On rejection** (user replies "不行" / "我自己来" / "manual" / any pushback on the plan): stop. Do not attempt a second plan. The user will commit by hand; you skip ahead to 3.5 once they confirm.
 
 **Rules**:
-- No `git commit --amend` anywhere — three-stage three-commit flow (work commits → archive commit → journal commit).
+- No `git commit --amend` anywhere.
+- Work commits must land before the task archive commit.
 - Never push to remote in this step.
 - If the user wants different message wording but accepts the file grouping, edit the message and re-confirm once — but if they reject the grouping, exit to manual mode.
 - The batched plan is one prompt; do not prompt per commit.
 
-#### 3.5 Wrap-up reminder
+#### 3.5 Verify and archive `[required · once]`
 
-After the above, remind the user they can run `/finish-work` to wrap up (archive the task, record the session).
+Before archiving, resolve the active task with `python3 ./.trellis/scripts/task.py current`, then run:
+
+```bash
+git diff --cached --name-only
+git status --porcelain
+```
+
+Apply these gates in order:
+
+- **Any staged path** — stop. Archive auto-commit uses the repository index and must start from a clean index; do not unstage another window's work.
+- **Current-task code is dirty** — stop. Return to Phase 3.4 and commit it first.
+- **Another task or archive entry under `.trellis/tasks/` is dirty** — stop. Archive auto-commit may stage task bookkeeping paths, so another task's changes must not be present.
+- **Other unrelated unstaged work** — report it once, leave it untouched, and continue.
+- **Uncertain ownership** — ask the user whether it belongs to this task.
+
+The active task's own `.trellis/tasks/<task-name>/` bookkeeping and unstaged `.trellis/workspace/` paths do not block archival. Do not stage, commit, stash, reset, or otherwise modify unrelated dirty files.
+
+After confirming that the index is clean and all current-task code is committed, archive the active task using the task directory name returned by `task.py current`:
+
+```bash
+python3 ./.trellis/scripts/task.py archive <task-name>
+```
+
+This produces the task archive commit. Do not call `/trellis:finish-work` and do not record a session journal.
+
+Final commit order:
+
+```text
+<work commits from Phase 3.4> → chore(task): archive ...
+```
 
 ---
 
@@ -652,7 +683,7 @@ This section is for developers who want to modify the Trellis workflow itself. A
 Edit the corresponding step's walkthrough body in the Phase 1 / 2 / 3 sections above. Critical invariants:
 - No active task must triage first and ask for task-creation consent before creating a Trellis task.
 - Planning must distinguish lightweight PRD-only tasks from complex tasks that require `prd.md`, `design.md`, and `implement.md` before start.
-- Every required execution path must keep the Phase 3.4 commit reminder reachable before `/trellis:finish-work`.
+- Every required execution path must complete Phase 3.4 before task archival.
 
 All tag blocks live in the `## Phase Index` section above, immediately after each phase summary:
 
@@ -661,8 +692,8 @@ All tag blocks live in the `## Phase Index` section above, immediately after eac
 | No active task (before Phase 1) | `[workflow-state:no_task]` (after the Phase Index ASCII art) |
 | All of Phase 1 (task created → ready for implementation) | `[workflow-state:planning]` (after Phase 1 summary) |
 | Codex inline Phase 1 | `[workflow-state:planning-inline]` |
-| Phase 2 + Phase 3.2–3.4 (implementation + check + wrap-up) | `[workflow-state:in_progress]` (after Phase 2 summary) |
-| Codex inline Phase 2 + Phase 3.2–3.4 | `[workflow-state:in_progress-inline]` |
+| Phase 2 + Phase 3.2–3.5 (implementation + check + commit + archive) | `[workflow-state:in_progress]` (after Phase 2 summary) |
+| Codex inline Phase 2 + Phase 3.2–3.5 | `[workflow-state:in_progress-inline]` |
 | After Phase 3.5 (archived) | `[workflow-state:completed]` (after Phase 3 summary; **currently DEAD**) |
 
 ### Changing the per-turn prompt text

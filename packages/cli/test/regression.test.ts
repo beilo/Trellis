@@ -3558,7 +3558,7 @@ describe("regression: current-task path normalization", () => {
     fs.mkdirSync(path.join(tmpDir, ".codex"), { recursive: true });
     writeProjectFile(
       path.join(".trellis", "config.yaml"),
-      'codex:\n  dispatch_mode: sub-agent  # opt into trellis-* sub-agents\n',
+      "codex:\n  dispatch_mode: sub-agent  # opt into trellis-* sub-agents\n",
     );
     const taskScriptPath = path.join(tmpDir, ".trellis", "scripts", "task.py");
     execSync(
@@ -3707,7 +3707,7 @@ print(len(entries))
     return readFileSync(templatePath, "utf-8");
   }
 
-  it("[workflow-state-r1] template workflow.md [workflow-state:in_progress] mentions commit (Phase 3.4)", () => {
+  it("[workflow-state-r1] template workflow.md preserves required finish gates", () => {
     const wf = templateWorkflowMd();
     const match = wf.match(
       /\[workflow-state:in_progress\]([\s\S]*?)\[\/workflow-state:in_progress\]/,
@@ -3715,6 +3715,17 @@ print(len(entries))
     expect(match).toBeTruthy();
     const body = match?.[1] ?? "";
     expect(body).toMatch(/commit \(Phase 3\.4\)/i);
+    expect(body).toMatch(/verify and archive \(Phase 3\.5\)/i);
+    expect(body).not.toContain("/trellis:finish-work");
+
+    const phase35Match = wf.match(/#### 3\.5 Verify and archive[\s\S]*?\n---/);
+    expect(phase35Match).toBeTruthy();
+    const phase35 = phase35Match?.[0] ?? "";
+    expect(phase35).toContain("git diff --cached --name-only");
+    expect(phase35).toContain("git status --porcelain");
+    expect(phase35).toContain("task.py archive <task-name>");
+    expect(phase35).toContain("Do not call `/trellis:finish-work`");
+    expect(phase35).toContain("do not record a session journal");
   });
 
   it("[issue-237] all implement/check agent templates contain recursion guards", () => {
