@@ -1,0 +1,32 @@
+packages/cli/test/regression.test.ts
+  s_0c2acf45601f36::t_a6e678ce60d1ba 3561,3721
+  s_0c2acf45601f36::t_45a4ade8f8720e 3718
+  s_0c2acf45601f36::t_2b00c2f33f9763 3710,3719-3720,3722-3728
+.trellis/workflow.md
+  s_0c2acf45601f36::t_8696cbc01259ea 644,647,651,653-656,659,661,695-696
+  s_0c2acf45601f36::t_dc90a9f3b11027 218,221-222,228,239,248,261,593,636-637,642,646,648-650,652,657-658,660,662-673,686
+  s_0c2acf45601f36::t_906e48bc006e11 645
+packages/cli/src/templates/trellis/workflow.md
+  s_0c2acf45601f36::t_359787655abb11 218,221-222,228,239,248,261,593,636-637,642,646,648-650,652,657-658,660,662-673,686
+  s_0c2acf45601f36::t_3bf3570e547ed1 644,647,651,653-656,659,661,695-696
+  s_0c2acf45601f36::t_9f39524ba425fb 645
+.trellis/spec/cli/backend/workflow-state-contract.md
+  s_0c2acf45601f36::t_0704f125ab4621 210
+  s_0c2acf45601f36::t_3a1cb36fa6aa46 207-208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "0b431219dba13ca6a98c75e6e2d28d1e474239d8",
+  "prompts": {},
+  "sessions": {
+    "s_0c2acf45601f36": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f6557-903e-72bd-892c-23915ac17245",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "leipeng <leipeng950504@gmail.com>"
+    }
+  }
+}
