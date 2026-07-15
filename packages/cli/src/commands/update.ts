@@ -45,6 +45,12 @@ import {
   workflowMdTemplate,
 } from "../templates/trellis/index.js";
 import { agentsMdContent } from "../templates/markdown/index.js";
+import {
+  COPILOT_INSTRUCTIONS_BLOCK_END,
+  COPILOT_INSTRUCTIONS_BLOCK_START,
+  COPILOT_INSTRUCTIONS_PATH,
+  getCopilotInstructions,
+} from "../templates/copilot/index.js";
 
 import {
   ALL_MANAGED_DIRS,
@@ -94,8 +100,8 @@ interface ChangeAnalysis {
 type ConflictAction = "overwrite" | "skip" | "create-new";
 
 const CLAUDE_SETTINGS_PATH = ".claude/settings.json";
-const TRELLIS_BLOCK_START = "<!-- TRELLIS:START -->";
-const TRELLIS_BLOCK_END = "<!-- TRELLIS:END -->";
+export const TRELLIS_BLOCK_START = "<!-- TRELLIS:START -->";
+export const TRELLIS_BLOCK_END = "<!-- TRELLIS:END -->";
 const LEGACY_UNTRACKED_AGENTS_MD_BLOCK_HASHES = new Set<string>([
   // v0.5.0-beta.17 and earlier wrote AGENTS.md but did not hash-track it.
   // This hash is the pristine Trellis-managed block before the Subagents
@@ -114,35 +120,49 @@ const PROTECTED_PATHS = [
   `${DIR_NAMES.WORKFLOW}/.current-task`,
 ];
 
-function getTrellisManagedBlock(content: string): string | null {
-  const start = content.indexOf(TRELLIS_BLOCK_START);
+function getManagedBlock(
+  content: string,
+  startMarker: string,
+  endMarker: string,
+): string | null {
+  const start = content.indexOf(startMarker);
   if (start === -1) {
     return null;
   }
 
-  const end = content.indexOf(TRELLIS_BLOCK_END, start);
+  const end = content.indexOf(endMarker, start);
   if (end === -1) {
     return null;
   }
 
-  return content.slice(start, end + TRELLIS_BLOCK_END.length);
+  return content.slice(start, end + endMarker.length);
 }
 
-function replaceTrellisManagedBlock(
+function getTrellisManagedBlock(content: string): string | null {
+  return getManagedBlock(content, TRELLIS_BLOCK_START, TRELLIS_BLOCK_END);
+}
+
+function replaceManagedBlock(
   existingContent: string,
   templateContent: string,
+  startMarker: string,
+  endMarker: string,
 ): string | null {
-  const existingStart = existingContent.indexOf(TRELLIS_BLOCK_START);
+  const existingStart = existingContent.indexOf(startMarker);
   if (existingStart === -1) {
     return null;
   }
 
-  const existingEnd = existingContent.indexOf(TRELLIS_BLOCK_END, existingStart);
+  const existingEnd = existingContent.indexOf(endMarker, existingStart);
   if (existingEnd === -1) {
     return null;
   }
 
-  const templateBlock = getTrellisManagedBlock(templateContent);
+  const templateBlock = getManagedBlock(
+    templateContent,
+    startMarker,
+    endMarker,
+  );
   if (!templateBlock) {
     return null;
   }
@@ -150,35 +170,78 @@ function replaceTrellisManagedBlock(
   return (
     existingContent.slice(0, existingStart) +
     templateBlock +
-    existingContent.slice(existingEnd + TRELLIS_BLOCK_END.length)
+    existingContent.slice(existingEnd + endMarker.length)
   );
 }
 
-function buildAgentsMdTemplate(cwd: string): string {
-  const fullPath = path.join(cwd, FILE_NAMES.AGENTS);
-  if (!fs.existsSync(fullPath)) {
-    return agentsMdContent;
-  }
-
-  const existingContent = fs.readFileSync(fullPath, "utf-8");
-
-  // Existing file already has TRELLIS:START/END markers — replace just the
-  // managed block, preserving everything outside it.
-  const replaced = replaceTrellisManagedBlock(existingContent, agentsMdContent);
+function mergeManagedBlockContent(
+  existingContent: string,
+  templateContent: string,
+  startMarker: string,
+  endMarker: string,
+): string {
+  const replaced = replaceManagedBlock(
+    existingContent,
+    templateContent,
+    startMarker,
+    endMarker,
+  );
   if (replaced !== null) {
     return replaced;
   }
 
-  // Existing file has no managed-block markers (pre-0.5.0-beta.18 project, or
-  // user hand-wrote AGENTS.md without ever running through Trellis). Append
-  // the template's managed block at the end so user content is preserved
-  // instead of clobbered.
-  const templateBlock = getTrellisManagedBlock(agentsMdContent);
+  const templateBlock = getManagedBlock(
+    templateContent,
+    startMarker,
+    endMarker,
+  );
   if (!templateBlock) {
-    return agentsMdContent;
+    return templateContent;
   }
+
   const trimmed = existingContent.replace(/\s+$/, "");
   return `${trimmed}\n\n${templateBlock}\n`;
+}
+
+function buildManagedBlockTemplate(
+  cwd: string,
+  relativePath: string,
+  templateContent: string,
+  startMarker: string,
+  endMarker: string,
+): string {
+  const fullPath = path.join(cwd, ...relativePath.split("/"));
+  if (!fs.existsSync(fullPath)) {
+    return templateContent;
+  }
+
+  const existingContent = fs.readFileSync(fullPath, "utf-8");
+  return mergeManagedBlockContent(
+    existingContent,
+    templateContent,
+    startMarker,
+    endMarker,
+  );
+}
+
+function buildAgentsMdTemplate(cwd: string): string {
+  return buildManagedBlockTemplate(
+    cwd,
+    FILE_NAMES.AGENTS,
+    agentsMdContent,
+    TRELLIS_BLOCK_START,
+    TRELLIS_BLOCK_END,
+  );
+}
+
+function buildCopilotInstructionsTemplate(cwd: string): string {
+  return buildManagedBlockTemplate(
+    cwd,
+    COPILOT_INSTRUCTIONS_PATH,
+    getCopilotInstructions(),
+    COPILOT_INSTRUCTIONS_BLOCK_START,
+    COPILOT_INSTRUCTIONS_BLOCK_END,
+  );
 }
 
 function isKnownUntrackedTemplate(
@@ -195,6 +258,35 @@ function isKnownUntrackedTemplate(
   }
 
   return LEGACY_UNTRACKED_AGENTS_MD_BLOCK_HASHES.has(computeHash(managedBlock));
+}
+
+function isSafeUntrackedCopilotInstructionsMerge(
+  relativePath: string,
+  existingContent: string,
+  newContent: string,
+): boolean {
+  if (relativePath !== COPILOT_INSTRUCTIONS_PATH) {
+    return false;
+  }
+
+  if (
+    getManagedBlock(
+      existingContent,
+      COPILOT_INSTRUCTIONS_BLOCK_START,
+      COPILOT_INSTRUCTIONS_BLOCK_END,
+    )
+  ) {
+    return false;
+  }
+
+  return (
+    mergeManagedBlockContent(
+      existingContent,
+      getCopilotInstructions(),
+      COPILOT_INSTRUCTIONS_BLOCK_START,
+      COPILOT_INSTRUCTIONS_BLOCK_END,
+    ) === newContent
+  );
 }
 
 /**
@@ -803,6 +895,12 @@ async function collectTemplateFiles(
       for (const [filePath, content] of platformFiles) {
         files.set(filePath, content);
       }
+      if (platformId === "copilot") {
+        files.set(
+          COPILOT_INSTRUCTIONS_PATH,
+          buildCopilotInstructionsTemplate(cwd),
+        );
+      }
     }
   }
 
@@ -894,7 +992,13 @@ function analyzeChanges(
         if (
           (storedHash && storedHash === currentHash) ||
           (!storedHash &&
-            isKnownUntrackedTemplate(relativePath, existingContent))
+            isKnownUntrackedTemplate(relativePath, existingContent)) ||
+          (!storedHash &&
+            isSafeUntrackedCopilotInstructionsMerge(
+              relativePath,
+              existingContent,
+              newContent,
+            ))
         ) {
           // Either the tracked hash matches, or this is a known pristine template
           // from before the path was hash-tracked. Safe to auto-update.
@@ -913,14 +1017,15 @@ function analyzeChanges(
   return result;
 }
 
-function collectMissingAgentsMdHash(
+function collectMissingManagedFileHashes(
   changes: ChangeAnalysis,
   hashes: TemplateHashes,
 ): Map<string, string> {
   const files = new Map<string, string>();
+  const managedFiles = new Set([FILE_NAMES.AGENTS, COPILOT_INSTRUCTIONS_PATH]);
 
   for (const file of changes.unchangedFiles) {
-    if (file.relativePath === FILE_NAMES.AGENTS && !hashes[file.relativePath]) {
+    if (managedFiles.has(file.relativePath) && !hashes[file.relativePath]) {
       files.set(file.relativePath, file.newContent);
     }
   }
@@ -1220,6 +1325,14 @@ async function getLatestNpmVersion(): Promise<string | null> {
 function collectAllFiles(dirPath: string, cwd = process.cwd()): string[] {
   if (!fs.existsSync(dirPath)) return [];
 
+  const rootStat = fs.statSync(dirPath);
+  if (rootStat.isFile()) {
+    return [dirPath];
+  }
+  if (!rootStat.isDirectory()) {
+    return [];
+  }
+
   const files: string[] = [];
   const stack = [dirPath];
 
@@ -1326,7 +1439,26 @@ function isFileSafeToReplace(
 /**
  * Classify migrations based on file state and user modifications
  */
-function classifyMigrations(
+/**
+ * Whether the manifest records any file under `dirRelativePath` — i.e. whether
+ * Trellis actually created this directory. Used to gate rename-dir migrations:
+ * a directory Trellis never wrote (e.g. a user's own `.windsurf/` editor
+ * config that merely shares a path with a retired Trellis platform dir) must
+ * not be auto-moved.
+ */
+export function dirHasManifestEntries(
+  dirRelativePath: string,
+  hashes: TemplateHashes,
+): boolean {
+  const prefix = dirRelativePath.endsWith("/")
+    ? dirRelativePath
+    : dirRelativePath + "/";
+  return Object.keys(hashes).some(
+    (key) => key === dirRelativePath || key.startsWith(prefix),
+  );
+}
+
+export function classifyMigrations(
   migrations: MigrationItem[],
   cwd: string,
   hashes: TemplateHashes,
@@ -1402,9 +1534,17 @@ function classifyMigrations(
           // Target has user modifications - conflict
           result.conflict.push(item);
         }
-      } else {
-        // Directory rename - always auto (includes user files)
+      } else if (dirHasManifestEntries(item.from, hashes)) {
+        // Trellis created this directory (the manifest tracks files under it),
+        // so the rename is ours to make.
         result.auto.push(item);
+      } else {
+        // Target absent and the source has no manifest record: this is very
+        // likely a user-owned directory that merely shares a path with a
+        // retired Trellis platform dir (e.g. a real `.windsurf/` editor
+        // config). Skipping avoids silently moving the user's data out from
+        // under their editor — even under --force, since skip never executes.
+        result.skip.push(item);
       }
     } else if (item.type === "delete") {
       if (isTemplateModified(cwd, item.from, hashes)) {
@@ -1479,7 +1619,9 @@ function printMigrationSummary(classified: ClassifiedMigrations): void {
   }
 
   if (classified.skip.length > 0) {
-    console.log(chalk.gray("  ○ Skipping (old file not found):"));
+    console.log(
+      chalk.gray("  ○ Skipping (not found, protected, or not Trellis-owned):"),
+    );
     for (const item of classified.skip.slice(0, 3)) {
       console.log(chalk.gray(`    ${item.from}`));
     }
@@ -1828,6 +1970,43 @@ function printMigrationResult(result: MigrationResult): void {
 }
 
 /**
+ * One-time 0.2.0 migration: rename `traces-*.md` → `journal-*.md` in every
+ * developer workspace directory.
+ *
+ * Never overwrites an existing `journal-N.md`: a newer session may already
+ * have created it, and `.trellis/workspace/` is excluded from the update
+ * backup (see `BACKUP_EXCLUDE_PATTERNS`), so clobbering it would be
+ * unrecoverable data loss. Conflicting `traces-N.md` files are left in place
+ * and reported instead.
+ */
+export function renameTracesToJournal(workspaceDir: string): {
+  renamed: number;
+  skipped: string[];
+} {
+  const skipped: string[] = [];
+  let renamed = 0;
+  if (!fs.existsSync(workspaceDir)) return { renamed, skipped };
+
+  for (const dev of fs.readdirSync(workspaceDir)) {
+    const devPath = path.join(workspaceDir, dev);
+    if (!fs.statSync(devPath).isDirectory()) continue;
+
+    for (const file of fs.readdirSync(devPath)) {
+      if (!(file.startsWith("traces-") && file.endsWith(".md"))) continue;
+      const oldPath = path.join(devPath, file);
+      const newPath = path.join(devPath, file.replace("traces-", "journal-"));
+      if (fs.existsSync(newPath)) {
+        skipped.push(oldPath);
+        continue;
+      }
+      fs.renameSync(oldPath, newPath);
+      renamed++;
+    }
+  }
+  return { renamed, skipped };
+}
+
+/**
  * Main update command
  */
 export async function update(options: UpdateOptions): Promise<void> {
@@ -2122,7 +2301,10 @@ export async function update(options: UpdateOptions): Promise<void> {
 
   // Analyze changes (pass hashes for modification detection)
   const changes = analyzeChanges(cwd, hashes, templates);
-  const missingAgentsMdHash = collectMissingAgentsMdHash(changes, hashes);
+  const missingManagedFileHashes = collectMissingManagedFileHashes(
+    changes,
+    hashes,
+  );
 
   // Print summary
   printChangeSummary(changes);
@@ -2161,8 +2343,8 @@ export async function update(options: UpdateOptions): Promise<void> {
     !hasPendingMigrations &&
     !hasSafeDeletes
   ) {
-    if (!options.dryRun && missingAgentsMdHash.size > 0) {
-      updateHashes(cwd, missingAgentsMdHash);
+    if (!options.dryRun && missingManagedFileHashes.size > 0) {
+      updateHashes(cwd, missingManagedFileHashes);
     }
 
     if (isSameVersion) {
@@ -2297,29 +2479,19 @@ export async function update(options: UpdateOptions): Promise<void> {
     // and variable file numbers (traces-1.md, traces-2.md, etc.), so we can't enumerate them
     // in the migration manifest. This is a one-time migration for the 0.2.0 naming redesign.
     const workspaceDir = path.join(cwd, PATHS.WORKSPACE);
-    if (fs.existsSync(workspaceDir)) {
-      let journalRenamed = 0;
-      const devDirs = fs.readdirSync(workspaceDir);
-      for (const dev of devDirs) {
-        const devPath = path.join(workspaceDir, dev);
-        if (!fs.statSync(devPath).isDirectory()) continue;
-
-        const files = fs.readdirSync(devPath);
-        for (const file of files) {
-          if (file.startsWith("traces-") && file.endsWith(".md")) {
-            const oldPath = path.join(devPath, file);
-            const newFile = file.replace("traces-", "journal-");
-            const newPath = path.join(devPath, newFile);
-            fs.renameSync(oldPath, newPath);
-            journalRenamed++;
-          }
-        }
-      }
-      if (journalRenamed > 0) {
-        console.log(
-          chalk.cyan(`Renamed ${journalRenamed} traces file(s) to journal`),
-        );
-      }
+    const { renamed: journalRenamed, skipped: journalSkipped } =
+      renameTracesToJournal(workspaceDir);
+    if (journalRenamed > 0) {
+      console.log(
+        chalk.cyan(`Renamed ${journalRenamed} traces file(s) to journal`),
+      );
+    }
+    for (const oldPath of journalSkipped) {
+      console.warn(
+        chalk.yellow(
+          `Kept ${path.relative(cwd, oldPath)}: its journal target already exists`,
+        ),
+      );
     }
   }
 
@@ -2435,7 +2607,7 @@ export async function update(options: UpdateOptions): Promise<void> {
   updateVersionFile(cwd);
 
   // Update template hashes for new, auto-updated, and overwritten files
-  const filesToHash = new Map<string, string>(missingAgentsMdHash);
+  const filesToHash = new Map<string, string>(missingManagedFileHashes);
   for (const file of changes.newFiles) {
     filesToHash.set(file.relativePath, file.newContent);
   }
