@@ -16,6 +16,7 @@ Beilo versions are independent from upstream Trellis versions.
 | Beilo version | Beilo tag | Upstream baseline | Upstream commit/tag | Sync commit | Date | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | 0.0.1 | `beilo-v0.0.1` | Trellis `0.6.0` | `v0.6.0` / `f2cc0745` | `a330cd37` | 2026-06-17 | Initial Beilo release line. Syncs upstream Trellis 0.6.0 GA into the Beilo branch. |
+| 0.0.2 | `beilo-v0.0.2` | Trellis `0.6.10` | `v0.6.10` / `c94d6fc2` | `4bf99046` | 2026-07-30 | Syncs upstream 0.6.10 and lets Codex channel workers inherit native multi-agent settings without child-thread terminal-event leakage. |
 
 ## Update Checklist
 

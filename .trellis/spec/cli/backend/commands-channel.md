@@ -734,6 +734,9 @@ interface CodexCtx {
 | Known `type:"reasoning"` | Add `detail.kind = "reasoning"`. |
 | Completed `agentMessage` with `phase:"commentary"` | Continue projecting it as `progress.detail.kind = "commentary"` with summarized `text_delta`. |
 | Completed `agentMessage` with `phase:"final_answer"` or no phase | Continue projecting it as `kind:"message"`; this remains the canonical completed assistant answer. |
+| `collabAgentToolCall` started | Emit non-terminal `progress.detail.kind = "collab_agent"`; native Codex sub-agents are allowed and must never be projected as channel errors. |
+| Notification `params.threadId` differs from the root `ctx.threadId` | Do not project child `agentMessage` output or child `turn/completed` / `turn/aborted` as channel message/done/error, and do not mutate root-turn completion state. |
+| Notification omits `params.threadId` | Treat it as root-thread input for compatibility with older Codex app-server traces. |
 
 Consumer contract:
 
@@ -771,6 +774,9 @@ Consumer contract:
   `detail.stream_id` values and route to `output` vs `commentary`.
 - Unit: unknown `itemId` preserves `detail.text_delta` and adds fallback
   `detail.kind = "output"` plus `detail.stream_id`.
+- Unit: native Codex collab calls emit progress rather than terminal errors.
+- Unit: child-thread deltas, final messages, completion, and abort notifications
+  do not emit channel output or mutate root-turn completion state.
 - Integration or fixture: recorded Codex trace with interleaved deltas can be
   replayed without consumers treating the whole turn as one mono stream.
 

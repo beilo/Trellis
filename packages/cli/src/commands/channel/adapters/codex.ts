@@ -22,9 +22,9 @@ import type { AdapterEvent, ParseResult } from "./types.js";
  *     item/completed agentMessage        → say(text, phase)
  *     item/agentMessage/delta            → progress(kind, stream_id, text_delta)
  *     item/completed commandExecution    → optional progress(status, exitCode)
- *     item/started   collabAgentToolCall → error(reason=collab_blocked, recommendation=set features.multi_agent=false)
- *     turn/completed                     → done
- *     turn/aborted                       → error(reason=aborted)
+ *     item/started   collabAgentToolCall → progress(kind=collab_agent, tool, status)
+ *     root turn/completed                → done
+ *     root turn/aborted                  → error(reason=aborted)
  *     warning                            → progress(kind=warning, message)
  *     mcpServer/elicitation/request      → reply { action: accept, content: {} }  (auto-allow)
  *
@@ -240,8 +240,11 @@ function handleNotification(msg: JsonRpcInbound, ctx: CodexCtx): ParseResult {
     case "item/completed":
       return handleItemCompleted(msg, ctx);
     case "item/agentMessage/delta":
-      return handleAgentMessageDelta(msg, ctx);
+      return isRootThreadNotification(msg, ctx)
+        ? handleAgentMessageDelta(msg, ctx)
+        : { events: [] };
     case "turn/completed":
+      if (!isRootThreadNotification(msg, ctx)) return { events: [] };
       if (ctx.finalMessageSeen) {
         ctx.pendingDone = false;
         return { events: [{ kind: "done", payload: {} }] };
@@ -249,9 +252,11 @@ function handleNotification(msg: JsonRpcInbound, ctx: CodexCtx): ParseResult {
       ctx.pendingDone = true;
       return { events: [] };
     case "turn/aborted":
-      return {
-        events: [{ kind: "error", payload: { message: "turn aborted" } }],
-      };
+      return isRootThreadNotification(msg, ctx)
+        ? {
+            events: [{ kind: "error", payload: { message: "turn aborted" } }],
+          }
+        : { events: [] };
     case "warning":
       return {
         events: [
@@ -383,13 +388,14 @@ function handleItemStarted(msg: JsonRpcInbound, ctx: CodexCtx): ParseResult {
       return {
         events: [
           {
-            kind: "error",
+            kind: "progress",
             payload: {
-              message:
-                "Worker tried to spawn codex sub-agent (collabAgentToolCall) — channel blocks this",
-              recommendation:
-                "thread/start must set features.multi_agent=false to prevent recursion",
-              receiver_thread_ids: item.receiverThreadIds,
+              detail: {
+                kind: "collab_agent",
+                tool: item.tool,
+                status: item.status,
+                receiver_thread_ids: item.receiverThreadIds,
+              },
             },
           },
         ],
@@ -419,6 +425,7 @@ function handleItemCompleted(msg: JsonRpcInbound, ctx: CodexCtx): ParseResult {
 
   switch (t) {
     case "agentMessage": {
+      if (!isRootThreadNotification(msg, ctx)) return { events: [] };
       const text = (item.text as string | undefined) ?? "";
       if (!text) return { events: [] };
       const phase = item.phase as string | undefined;
@@ -555,6 +562,11 @@ function isObject(x: unknown): x is Record<string, unknown> {
   return typeof x === "object" && x !== null && !Array.isArray(x);
 }
 
+function isRootThreadNotification(msg: JsonRpcInbound, ctx: CodexCtx): boolean {
+  const threadId = msg.params?.threadId;
+  return typeof threadId !== "string" || threadId === ctx.threadId;
+}
+
 // ── Outbound helpers ──
 
 export function encodeCodexRequest(
@@ -646,15 +658,6 @@ export function buildCodexThreadStartParams(
     // Default stays workspace-write; callers (channel spawn --sandbox) may
     // override to match the user's main-session Codex permissions (#413).
     sandbox: sandbox ?? "workspace-write",
-    // Disable codex native multi-agent so spawned worker can't recurse into
-    // its own sub-agents (would conflict with channel's collaboration layer
-    // and reproduce issue #234/#237 recursion).
-    config: {
-      features: {
-        multi_agent: false,
-        multi_agent_v2: { enabled: false },
-      },
-    },
   };
   if (systemPrompt?.trim()) {
     params.developerInstructions = systemPrompt;

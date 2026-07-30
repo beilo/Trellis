@@ -145,15 +145,105 @@ describe("Codex channel adapter", () => {
     ]);
   });
 
+  it("reports native multi-agent calls as progress", () => {
+    const result = parse({
+      method: "item/started",
+      params: {
+        threadId: "root-thread",
+        item: {
+          type: "collabAgentToolCall",
+          tool: "spawn",
+          status: "inProgress",
+          receiverThreadIds: ["child-thread"],
+        },
+      },
+    });
+
+    expect(result.events).toEqual([
+      {
+        kind: "progress",
+        payload: {
+          detail: {
+            kind: "collab_agent",
+            tool: "spawn",
+            status: "inProgress",
+            receiver_thread_ids: ["child-thread"],
+          },
+        },
+      },
+    ]);
+  });
+
+  it("ignores child-thread output and terminal notifications", () => {
+    const ctx = createCodexCtx();
+    ctx.threadId = "root-thread";
+
+    const delta = parse(
+      {
+        method: "item/agentMessage/delta",
+        params: {
+          threadId: "child-thread",
+          itemId: "child-message",
+          delta: "child output",
+        },
+      },
+      ctx,
+    );
+    const final = parse(
+      {
+        method: "item/completed",
+        params: {
+          threadId: "child-thread",
+          item: {
+            type: "agentMessage",
+            id: "child-message",
+            text: "child result",
+            phase: "final_answer",
+          },
+        },
+      },
+      ctx,
+    );
+    const completed = parse(
+      {
+        method: "turn/completed",
+        params: { threadId: "child-thread" },
+      },
+      ctx,
+    );
+    const aborted = parse(
+      {
+        method: "turn/aborted",
+        params: { threadId: "child-thread" },
+      },
+      ctx,
+    );
+
+    expect(delta.events).toEqual([]);
+    expect(final.events).toEqual([]);
+    expect(completed.events).toEqual([]);
+    expect(aborted.events).toEqual([]);
+    expect(ctx.finalMessageSeen).toBe(false);
+    expect(ctx.pendingDone).toBe(false);
+  });
+
   it("emits done after the final answer when turn/completed arrives first", () => {
     const ctx = createCodexCtx();
-    const completed = parse({ method: "turn/completed", params: {} }, ctx);
+    ctx.threadId = "root-thread";
+    const completed = parse(
+      {
+        method: "turn/completed",
+        params: { threadId: "root-thread" },
+      },
+      ctx,
+    );
     expect(completed.events).toEqual([]);
 
     const final = parse(
       {
         method: "item/completed",
         params: {
+          threadId: "root-thread",
           item: {
             type: "agentMessage",
             id: "msg_final",
@@ -176,10 +266,12 @@ describe("Codex channel adapter", () => {
 
   it("emits done immediately when turn/completed arrives after the final answer", () => {
     const ctx = createCodexCtx();
+    ctx.threadId = "root-thread";
     parse(
       {
         method: "item/completed",
         params: {
+          threadId: "root-thread",
           item: {
             type: "agentMessage",
             id: "msg_final",
@@ -191,14 +283,21 @@ describe("Codex channel adapter", () => {
       ctx,
     );
 
-    const completed = parse({ method: "turn/completed", params: {} }, ctx);
+    const completed = parse(
+      {
+        method: "turn/completed",
+        params: { threadId: "root-thread" },
+      },
+      ctx,
+    );
     expect(completed.events).toEqual([{ kind: "done", payload: {} }]);
   });
 
   describe("sandbox override (#413)", () => {
-    it("defaults to workspace-write when no sandbox is given", () => {
+    it("defaults to workspace-write without overriding user features", () => {
       const params = buildCodexThreadStartParams("/tmp/proj");
       expect(params.sandbox).toBe("workspace-write");
+      expect(params).not.toHaveProperty("config");
     });
 
     it("overrides the sandbox mode when provided", () => {
@@ -214,9 +313,7 @@ describe("Codex channel adapter", () => {
     it("parseCodexSandboxMode accepts documented modes", () => {
       expect(parseCodexSandboxMode(undefined)).toBeUndefined();
       expect(parseCodexSandboxMode("read-only")).toBe("read-only");
-      expect(parseCodexSandboxMode("workspace-write")).toBe(
-        "workspace-write",
-      );
+      expect(parseCodexSandboxMode("workspace-write")).toBe("workspace-write");
       expect(parseCodexSandboxMode("danger-full-access")).toBe(
         "danger-full-access",
       );

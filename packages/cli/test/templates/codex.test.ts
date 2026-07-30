@@ -116,14 +116,10 @@ describe("codex getConfigTemplate", () => {
     expect(config.content).not.toMatch(/^\[features\.multi_agent_v2\]/m);
   });
 
-  // #445 removed the per-agent `[features] multi_agent = false` guard (the
-  // #240/#241 wait_agent-deadlock structural fix), relying on Codex's default
-  // `agents.max_depth = 1`. That key is global/user-level, not settable inside
-  // an individual agent's .toml, so pin it here in the project config Trellis
-  // owns — this is the config surface that outranks a user's global override.
-  it("pins agents.max_depth = 1 to guard against recursion reopening (#240, #241, #445)", () => {
+  it("does not override the user's native sub-agent depth", () => {
     const config = getConfigTemplate();
-    expect(config.content).toMatch(/^\[agents\]\s*\nmax_depth = 1/m);
+    expect(config.content).not.toMatch(/^\[agents\]/m);
+    expect(config.content).not.toContain("max_depth");
   });
 });
 
@@ -151,7 +147,9 @@ describe("codex sub-agent recursion guard (issue #234)", () => {
       expect(content).toContain("trellis-implement");
       expect(content).toContain("trellis-check");
       // Mentions the leakage source so the reader knows why
-      expect(content).toMatch(/SessionStart|dispatch.*main session|breadcrumb/i);
+      expect(content).toMatch(
+        /SessionStart|dispatch.*main session|breadcrumb/i,
+      );
     });
   }
 });
@@ -173,9 +171,7 @@ describe("codex two-channel sub-agent context (native SubagentStart)", () => {
       const savedOutputNotice = content.indexOf(
         "Full hook output saved to: <path>",
       );
-      const injectionMarker = content.indexOf(
-        "<!-- trellis-hook-injected -->",
-      );
+      const injectionMarker = content.indexOf("<!-- trellis-hook-injected -->");
 
       expect(savedOutputNotice).toBeGreaterThan(-1);
       expect(injectionMarker).toBeGreaterThan(savedOutputNotice);
@@ -236,7 +232,9 @@ describe("codex session-start.py compact SessionStart context", () => {
     expect(content).toContain("design.md if present");
     expect(content).not.toContain("<sub-agent-notice>");
     expect(content).not.toContain("guides (inlined");
-    expect(content).not.toContain("Project spec indexes are listed by path below");
+    expect(content).not.toContain(
+      "Project spec indexes are listed by path below",
+    );
   });
 
   it("documents fail-open exception suppression", () => {
