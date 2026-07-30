@@ -36,6 +36,9 @@ import { configureReasonix, collectReasonixTemplates } from "./reasonix.js";
 import { configureZcode, collectZcodeTemplates } from "./zcode.js";
 import { configureTrae } from "./trae.js";
 import { configureOmp, collectOmpTemplates } from "./omp.js";
+import { configureGrok, collectGrokTemplates } from "./grok.js";
+import { configureKimi, collectKimiTemplates } from "./kimi.js";
+import { configureSnow, collectSnowTemplates } from "./snow.js";
 
 // Shared utilities
 import {
@@ -50,7 +53,6 @@ import {
   wrapWithCommandFrontmatter,
   collectSkillTemplates,
   applyPullBasedPreludeMarkdown,
-  applyPullBasedPreludeToml,
   normalizeCopilotMarkdownAgents,
   type PlatformConfigureOptions,
 } from "./shared.js";
@@ -231,7 +233,7 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
       for (const skill of getCodexPlatformSkills()) {
         files.set(`.codex/skills/${skill.name}/SKILL.md`, skill.content);
       }
-      for (const agent of applyPullBasedPreludeToml(getCodexAgents())) {
+      for (const agent of getCodexAgents()) {
         files.set(`.codex/agents/${agent.name}.toml`, agent.content);
       }
       for (const hook of getCodexHooks()) {
@@ -494,6 +496,18 @@ const PLATFORM_FUNCTIONS: Record<AITool, PlatformFunctions> = {
   omp: {
     configure: configureOmp,
     collectTemplates: () => collectOmpTemplates(),
+  },
+  grok: {
+    configure: configureGrok,
+    collectTemplates: () => collectGrokTemplates(),
+  },
+  kimi: {
+    configure: configureKimi,
+    collectTemplates: () => collectKimiTemplates(),
+  },
+  snow: {
+    configure: configureSnow,
+    collectTemplates: () => collectSnowTemplates(),
   },
 };
 

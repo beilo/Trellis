@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   contextCollector,
   isTrellisSubagent,
+  readContextInjectionLimits,
   TrellisContext,
+  truncateUtf8,
 } from "../../src/templates/opencode/lib/trellis-context.js";
 import {
   buildSessionContext,
@@ -72,7 +74,11 @@ describe("opencode session context dedupe", () => {
 });
 
 describe("opencode session-start history detection", () => {
-  it("includes the one-shot first-reply notice in injected context", () => {
+  afterEach((): void => {
+    contextCollector.clear("session-a");
+  });
+
+  it("builds compact startup context with an adaptive one-shot acknowledgment", () => {
     const context = buildSessionContext({
       directory: "/tmp/trellis-opencode-test",
       getActiveTask: () => ({ taskPath: null, source: "none", stale: false }),
@@ -84,13 +90,104 @@ describe("opencode session-start history detection", () => {
       runScript: () => "",
     });
 
+    expect(context.startsWith("<session-context>")).toBe(true);
+    expect(context).toContain("Trellis compact SessionStart context");
     expect(context).toContain("<first-reply-notice>");
-    expect(context).toContain("First visible reply");
-    expect(context).toContain("Trellis SessionStart context is loaded");
-    expect(context).toContain("This notice is one-shot");
-    expect(context.indexOf("<first-reply-notice>")).toBeLessThan(
-      context.indexOf("<guidelines>"),
+    expect(context).toContain("the user's current request");
+    expect(context).toContain("the user message that triggered this reply");
+    expect(context).toContain("has no clear natural language");
+    expect(context).toContain(
+      "explicitly established project communication language",
     );
+    expect(context).toContain("Trellis SessionStart ✓");
+    expect(context).toContain("Continue directly with the user's request");
+    expect(context).toContain(
+      "must not alter the language used for the remainder of the response",
+    );
+    expect(context).toContain("This notice is one-shot");
+    expect(context.indexOf("the user's current request")).toBeLessThan(
+      context.indexOf("explicitly established project communication language"),
+    );
+    expect(
+      context.indexOf("explicitly established project communication language"),
+    ).toBeLessThan(context.indexOf("Trellis SessionStart ✓"));
+    expect(context.indexOf("<first-reply-notice>")).toBeLessThan(
+      context.indexOf("<current-state>"),
+    );
+    expect(context).toContain("<guidelines>");
+    expect(context).toContain("<ready>");
+    expect(context).not.toContain("say once in Chinese");
+    expect(context).not.toContain("exactly one short Chinese sentence");
+    expect(context).not.toContain(
+      "Trellis SessionStart 已注入：workflow、当前任务状态、开发者身份、git 状态、active tasks、spec 索引已加载。",
+    );
+  });
+
+  it("persists startup context and suppresses reinjection from history", async () => {
+    interface ChatOutput {
+      parts: {
+        type: string;
+        text: string;
+        metadata?: { trellis?: { sessionStart?: boolean } };
+      }[];
+    }
+
+    let historyReads = 0;
+    let persistedParts: ChatOutput["parts"] = [];
+    const hooks = (await sessionStartPlugin({
+      directory: "/tmp/trellis-opencode-test",
+      client: {
+        session: {
+          messages: async () => {
+            historyReads += 1;
+            return {
+              data:
+                persistedParts.length === 0
+                  ? []
+                  : [{ info: { role: "user" }, parts: persistedParts }],
+            };
+          },
+        },
+      },
+    })) as {
+      "chat.message": (
+        input: { sessionID: string; agent: string },
+        output: ChatOutput,
+      ) => Promise<void>;
+    };
+
+    const firstOutput: ChatOutput = {
+      parts: [{ type: "text", text: "First request" }],
+    };
+    await hooks["chat.message"](
+      { sessionID: "session-a", agent: "build" },
+      firstOutput,
+    );
+
+    expect(firstOutput.parts[0].text).toMatch(
+      /^<session-context>[\s\S]*\n\n---\n\nFirst request$/,
+    );
+    expect(firstOutput.parts[0].text).toContain("<first-reply-notice>");
+    expect(firstOutput.parts[0].text).toContain("Trellis SessionStart ✓");
+    expect(firstOutput.parts[0].metadata).toEqual({
+      trellis: { sessionStart: true },
+    });
+
+    persistedParts = firstOutput.parts;
+    contextCollector.clear("session-a");
+
+    const secondOutput: ChatOutput = {
+      parts: [{ type: "text", text: "Second request" }],
+    };
+    await hooks["chat.message"](
+      { sessionID: "session-a", agent: "build" },
+      secondOutput,
+    );
+
+    expect(secondOutput.parts).toEqual([
+      { type: "text", text: "Second request" },
+    ]);
+    expect(historyReads).toBe(2);
   });
 
   it("detects persisted Trellis context from metadata", () => {
@@ -717,5 +814,450 @@ describe("opencode chat.message subagent skip (issue #264)", () => {
 
     expect(parts[0].text).toContain("<workflow-state>");
     expect(parts[0].text).toContain("user prompt");
+  });
+
+  it("inject-workflow-state.js skips injection when the prompt contains the default skip keyword", async () => {
+    const hooks = (await injectWorkflowStatePlugin({
+      directory: dir,
+    })) as ChatMessageHooks;
+    const parts: ChatMessagePart[] = [
+      { type: "text", text: "no-trellis what does this regex do" },
+    ];
+
+    await hooks["chat.message"](
+      { sessionID: "main-session", agent: "build" },
+      { parts },
+    );
+
+    expect(parts).toHaveLength(1);
+    expect(parts[0].text).toBe("no-trellis what does this regex do");
+  });
+
+  it("inject-workflow-state.js does not skip on 'no-trellisfoo' (word-boundary negative)", async () => {
+    const hooks = (await injectWorkflowStatePlugin({
+      directory: dir,
+    })) as ChatMessageHooks;
+    const parts: ChatMessagePart[] = [
+      { type: "text", text: "no-trellisfoo is a strange word" },
+    ];
+
+    await hooks["chat.message"](
+      { sessionID: "main-session", agent: "build" },
+      { parts },
+    );
+
+    expect(parts[0].text).toContain("<workflow-state>");
+  });
+
+  it("inject-workflow-state.js honors a custom prompt_injection.skip_keyword", async () => {
+    writeFileSync(
+      join(dir, ".trellis", "config.yaml"),
+      ["prompt_injection:", '  skip_keyword: "off-topic"'].join("\n"),
+    );
+    const hooks = (await injectWorkflowStatePlugin({
+      directory: dir,
+    })) as ChatMessageHooks;
+
+    const skipped: ChatMessagePart[] = [
+      { type: "text", text: "off-topic question" },
+    ];
+    await hooks["chat.message"](
+      { sessionID: "main-session", agent: "build" },
+      { parts: skipped },
+    );
+    expect(skipped[0].text).toBe("off-topic question");
+
+    const notSkipped: ChatMessagePart[] = [
+      { type: "text", text: "no-trellis question" },
+    ];
+    await hooks["chat.message"](
+      { sessionID: "main-session-2", agent: "build" },
+      { parts: notSkipped },
+    );
+    expect(notSkipped[0].text).toContain("<workflow-state>");
+  });
+
+  it("inject-workflow-state.js disables the escape hatch with skip_keyword: \"\"", async () => {
+    writeFileSync(
+      join(dir, ".trellis", "config.yaml"),
+      ["prompt_injection:", '  skip_keyword: ""'].join("\n"),
+    );
+    const hooks = (await injectWorkflowStatePlugin({
+      directory: dir,
+    })) as ChatMessageHooks;
+    const parts: ChatMessagePart[] = [
+      { type: "text", text: "no-trellis question" },
+    ];
+
+    await hooks["chat.message"](
+      { sessionID: "main-session", agent: "build" },
+      { parts },
+    );
+
+    expect(parts[0].text).toContain("<workflow-state>");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Issue #441 — sub-agent context injection limits
+// ---------------------------------------------------------------------------
+
+describe("opencode context injection limits (issue #441)", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = setupTrellisProject();
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function writeConfig(yaml: string): void {
+    writeFileSync(join(dir, ".trellis", "config.yaml"), yaml, "utf-8");
+  }
+
+  function writeJsonlEntries(entries: Record<string, string>[]): void {
+    writeFileSync(
+      join(dir, ".trellis", "tasks", "demo-task", "implement.jsonl"),
+      entries.map(e => JSON.stringify(e)).join("\n") + "\n",
+      "utf-8",
+    );
+  }
+
+  async function runImplementHook(): Promise<string> {
+    writeSessionFile(dir, "opencode_sole", ".trellis/tasks/demo-task");
+    const hooks = (await injectSubagentContextPlugin({
+      directory: dir,
+      platform: "linux",
+      env: {},
+    })) as TaskToolHooks;
+    const output: TaskToolOutput = {
+      args: {
+        subagent_type: "trellis-implement",
+        prompt: "do the implementation",
+      },
+    };
+    await hooks["tool.execute.before"](
+      { tool: "task", sessionID: "stranger" },
+      output,
+    );
+    return output.args.prompt ?? "";
+  }
+
+  describe("truncateUtf8", () => {
+    it("leaves data untouched when cap is 0 (unlimited)", () => {
+      const data = Buffer.from("X".repeat(1000));
+      expect(truncateUtf8(data, 0)).toEqual(data);
+    });
+
+    it("leaves data untouched when data is at or under the cap", () => {
+      const data = Buffer.from("hello world");
+      expect(truncateUtf8(data, data.length)).toEqual(data);
+      expect(truncateUtf8(data, data.length + 5)).toEqual(data);
+    });
+
+    it("truncates ASCII data exactly at the cap (1 byte over cap)", () => {
+      const data = Buffer.from("abcdefghij"); // 10 bytes
+      expect(truncateUtf8(data, 9)).toEqual(Buffer.from("abcdefghi"));
+    });
+
+    it("never splits a 2-byte UTF-8 sequence at the boundary (café)", () => {
+      const data = Buffer.from("café", "utf-8");
+      for (let cap = 0; cap <= data.length; cap++) {
+        // Buffer#toString replaces invalid sequences with U+FFFD; a correct
+        // cut never produces one.
+        expect(truncateUtf8(data, cap).toString("utf-8")).not.toContain("�");
+      }
+      expect(truncateUtf8(data, 4).toString("utf-8")).toBe("caf");
+    });
+
+    it("never splits a 3-byte UTF-8 sequence at the boundary (euro sign)", () => {
+      const data = Buffer.from("x€", "utf-8"); // x + 3-byte euro sign
+      for (let cap = 0; cap <= data.length; cap++) {
+        expect(truncateUtf8(data, cap).toString("utf-8")).not.toContain("�");
+      }
+    });
+  });
+
+  describe("readContextInjectionLimits", () => {
+    it("returns built-in defaults when config.yaml is absent", () => {
+      expect(readContextInjectionLimits(dir)).toEqual({
+        max_file_bytes: 32768,
+        max_artifact_bytes: 65536,
+        max_total_bytes: 131072,
+      });
+    });
+
+    it("returns built-in defaults when config.yaml has no context_injection section", () => {
+      writeConfig("session_auto_commit: true\n");
+      expect(readContextInjectionLimits(dir)).toEqual({
+        max_file_bytes: 32768,
+        max_artifact_bytes: 65536,
+        max_total_bytes: 131072,
+      });
+    });
+
+    it("applies explicit overrides for all three keys", () => {
+      writeConfig(
+        [
+          "context_injection:",
+          "  max_file_bytes: 100",
+          "  max_artifact_bytes: 200",
+          "  max_total_bytes: 300",
+        ].join("\n"),
+      );
+      expect(readContextInjectionLimits(dir)).toEqual({
+        max_file_bytes: 100,
+        max_artifact_bytes: 200,
+        max_total_bytes: 300,
+      });
+    });
+
+    it("0 means unlimited and is preserved as-is (not replaced by default)", () => {
+      writeConfig(["context_injection:", "  max_total_bytes: 0"].join("\n"));
+      expect(readContextInjectionLimits(dir).max_total_bytes).toBe(0);
+    });
+
+    it("falls back to default for a negative value", () => {
+      writeConfig(["context_injection:", "  max_file_bytes: -5"].join("\n"));
+      expect(readContextInjectionLimits(dir).max_file_bytes).toBe(32768);
+    });
+
+    it("falls back to default for a non-integer value", () => {
+      writeConfig(
+        ["context_injection:", "  max_artifact_bytes: not-a-number"].join("\n"),
+      );
+      expect(readContextInjectionLimits(dir).max_artifact_bytes).toBe(65536);
+    });
+  });
+
+  describe("inject-subagent-context plugin", () => {
+    it("inlines under-cap content unchanged with no notices (golden)", async () => {
+      writeFileSync(join(dir, "small.md"), "small spec content\n", "utf-8");
+      writeJsonlEntries([{ file: "small.md", reason: "r" }]);
+
+      const prompt = await runImplementHook();
+
+      expect(prompt).toContain("=== small.md ===\nsmall spec content");
+      expect(prompt).toContain(
+        "=== .trellis/tasks/demo-task/prd.md (Requirements) ===\n# Demo PRD",
+      );
+      expect(prompt).not.toContain("[Trellis: truncated");
+      expect(prompt).not.toContain("[Trellis: not inlined");
+    });
+
+    it("keeps binary jsonl references as notices even when limits are unlimited", async () => {
+      const binary = Buffer.from([
+        0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x41, 0x42,
+      ]);
+      writeFileSync(join(dir, "design.png"), binary);
+      writeFileSync(join(dir, "invalid.bin"), Buffer.from([0xff, 0xfe, 0xfd]));
+      writeJsonlEntries([
+        { file: "design.png", reason: "visual baseline" },
+        { file: "invalid.bin", reason: "legacy export" },
+      ]);
+      writeConfig(
+        [
+          "context_injection:",
+          "  max_file_bytes: 0",
+          "  max_total_bytes: 0",
+        ].join("\n"),
+      );
+
+      const prompt = await runImplementHook();
+
+      expect(prompt).toContain(
+        "[Trellis: not inlined (binary file) — design.png (10 bytes): visual baseline]",
+      );
+      expect(prompt).toContain(
+        "[Trellis: not inlined (binary file) — invalid.bin (3 bytes): legacy export]",
+      );
+      expect(prompt).not.toContain("=== design.png ===");
+      expect(prompt).not.toContain("=== invalid.bin ===");
+      expect(prompt).not.toContain("\u0000");
+      expect(prompt).not.toContain("�");
+    });
+
+    it("does not misclassify legitimate multi-byte UTF-8 content as binary", async () => {
+      const multiByteContent =
+        "emoji: 🎉🚀 cjk: 中文测试 bmp: café naïve\n";
+      writeFileSync(join(dir, "multibyte.md"), multiByteContent, "utf-8");
+      writeJsonlEntries([{ file: "multibyte.md", reason: "unicode spec" }]);
+
+      const prompt = await runImplementHook();
+
+      expect(prompt).toContain(`=== multibyte.md ===\n${multiByteContent}`);
+      expect(prompt).not.toContain("[Trellis: not inlined (binary file)");
+    });
+
+    it("classifies a file as binary when binary bytes appear only at the end", async () => {
+      const mixed = Buffer.concat([
+        Buffer.from("looks like a normal text file up front\n", "utf-8"),
+        Buffer.from([0x00, 0xff, 0xfe]),
+      ]);
+      writeFileSync(join(dir, "mixed.dat"), mixed);
+      writeJsonlEntries([{ file: "mixed.dat", reason: "mixed content" }]);
+
+      const prompt = await runImplementHook();
+
+      expect(prompt).toContain(
+        `[Trellis: not inlined (binary file) — mixed.dat (${mixed.length} bytes): mixed content]`,
+      );
+      expect(prompt).not.toContain("=== mixed.dat ===");
+    });
+
+    it("truncates an oversized jsonl-referenced file at max_file_bytes with a notice", async () => {
+      writeFileSync(join(dir, "big.txt"), "A".repeat(2 * 1024 * 1024), "utf-8");
+      writeJsonlEntries([{ file: "big.txt", reason: "big" }]);
+
+      const prompt = await runImplementHook();
+
+      expect(Buffer.byteLength(prompt, "utf-8")).toBeLessThanOrEqual(
+        128 * 1024 + 4096, // total cap + slack for the prompt template/notices
+      );
+      expect(prompt).toContain(
+        "[Trellis: truncated at 32768 bytes — read big.txt for the full content]",
+      );
+    });
+
+    it("never splits a multi-byte UTF-8 sequence at the 32768-byte cut point", async () => {
+      // 32767 ASCII bytes + Chinese text: the default cap lands inside the
+      // first 3-byte character and must back off, not emit mojibake.
+      writeFileSync(
+        join(dir, "zh.md"),
+        "a".repeat(32767) + "中文内容",
+        "utf-8",
+      );
+      writeJsonlEntries([{ file: "zh.md", reason: "zh" }]);
+
+      const prompt = await runImplementHook();
+
+      expect(prompt).not.toContain("�");
+      expect(prompt).toContain(
+        "a".repeat(32767) +
+          "\n[Trellis: truncated at 32768 bytes — read zh.md for the full content]",
+      );
+    });
+
+    it("truncates an oversized artifact (prd.md) at max_artifact_bytes", async () => {
+      writeFileSync(
+        join(dir, ".trellis", "tasks", "demo-task", "prd.md"),
+        "P".repeat(100000),
+        "utf-8",
+      );
+
+      const prompt = await runImplementHook();
+
+      expect(prompt).toContain("P".repeat(65536));
+      expect(prompt).not.toContain("P".repeat(65537));
+      expect(prompt).toContain(
+        "[Trellis: truncated at 65536 bytes — read .trellis/tasks/demo-task/prd.md for the full content]",
+      );
+    });
+
+    it("degrades to an index line once the total budget is exhausted (3 files)", async () => {
+      writeFileSync(join(dir, "f1.txt"), "1".repeat(50), "utf-8");
+      writeFileSync(join(dir, "f2.txt"), "2".repeat(50), "utf-8");
+      writeFileSync(join(dir, "f3.txt"), "3".repeat(50), "utf-8");
+      writeJsonlEntries([
+        { file: "f1.txt", reason: "first" },
+        { file: "f2.txt", reason: "second" },
+        { file: "f3.txt", reason: "third" },
+      ]);
+      writeConfig(
+        [
+          "context_injection:",
+          "  max_file_bytes: 0",
+          "  max_artifact_bytes: 0",
+          "  max_total_bytes: 120", // fits f1 fully, degrades f2/f3
+        ].join("\n"),
+      );
+
+      const prompt = await runImplementHook();
+
+      expect(prompt).toContain("=== f1.txt ===\n" + "1".repeat(50));
+      expect(prompt).toContain(
+        "[Trellis: not inlined (total context limit reached) — f2.txt (50 bytes): second]",
+      );
+      expect(prompt).toContain(
+        "[Trellis: not inlined (total context limit reached) — f3.txt (50 bytes): third]",
+      );
+      expect(prompt).not.toContain("=== f2.txt ===");
+      expect(prompt).not.toContain("=== f3.txt ===");
+    });
+
+    it("honors a max_file_bytes override from .trellis/config.yaml", async () => {
+      writeFileSync(join(dir, "ref.md"), "R".repeat(100), "utf-8");
+      writeJsonlEntries([{ file: "ref.md", reason: "ref" }]);
+      writeConfig(["context_injection:", "  max_file_bytes: 10"].join("\n"));
+
+      const prompt = await runImplementHook();
+
+      expect(prompt).toContain(
+        "[Trellis: truncated at 10 bytes — read ref.md for the full content]",
+      );
+      expect(prompt).not.toContain("R".repeat(11));
+    });
+
+    it("max_file_bytes: 0 and max_total_bytes: 0 restore fully unlimited inlining", async () => {
+      const bigContent = "Z".repeat(40000); // over the 32768 default file cap
+      writeFileSync(join(dir, "big.txt"), bigContent, "utf-8");
+      writeJsonlEntries([{ file: "big.txt", reason: "big" }]);
+      writeConfig(
+        [
+          "context_injection:",
+          "  max_file_bytes: 0",
+          "  max_total_bytes: 0",
+        ].join("\n"),
+      );
+
+      const prompt = await runImplementHook();
+
+      expect(prompt).toContain("=== big.txt ===\n" + bigContent);
+      expect(prompt).not.toContain("[Trellis: truncated");
+      expect(prompt).not.toContain("[Trellis: not inlined");
+    });
+
+    it("invalid config values fall back to the default cap", async () => {
+      writeFileSync(join(dir, "big.txt"), "A".repeat(40000), "utf-8");
+      writeJsonlEntries([{ file: "big.txt", reason: "big" }]);
+      writeConfig(
+        ["context_injection:", "  max_file_bytes: not-a-number"].join("\n"),
+      );
+
+      const prompt = await runImplementHook();
+
+      expect(prompt).toContain(
+        "[Trellis: truncated at 32768 bytes — read big.txt for the full content]",
+      );
+    });
+
+    it("directory entries respect the per-file cap and only inline .md files", async () => {
+      mkdirSync(join(dir, "refdir"), { recursive: true });
+      writeFileSync(join(dir, "refdir", "a.md"), "A".repeat(1000), "utf-8");
+      writeFileSync(join(dir, "refdir", "b.md"), "B".repeat(1000), "utf-8");
+      writeFileSync(join(dir, "refdir", "c.txt"), "IGNORED_TXT_CONTENT", "utf-8");
+      writeJsonlEntries([
+        { file: "refdir/", type: "directory", reason: "reference dir" },
+      ]);
+      writeConfig(
+        [
+          "context_injection:",
+          "  max_file_bytes: 10",
+          "  max_total_bytes: 0",
+        ].join("\n"),
+      );
+
+      const prompt = await runImplementHook();
+
+      expect(prompt).toContain(
+        "[Trellis: truncated at 10 bytes — read refdir/a.md for the full content]",
+      );
+      expect(prompt).toContain(
+        "[Trellis: truncated at 10 bytes — read refdir/b.md for the full content]",
+      );
+      expect(prompt).not.toContain("IGNORED_TXT_CONTENT");
+    });
   });
 });

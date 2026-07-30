@@ -1157,3 +1157,187 @@ Repaired Trellis package/spec routing, added repo and core spec indexes, fixed s
 ### Next Steps
 
 - None - task complete
+
+
+## Session 170: 0.6.8 release + PR reviews + context injection caps (#441)
+
+**Date**: 2026-07-22
+**Task**: 0.6.8 release + PR reviews + context injection caps (#441)
+**Package**: cli
+**Branch**: `main`
+
+### Summary
+
+Reviewed PRs #452 (Kimi Code, merged after marketplace#10) and #443 (Snow CLI, four review blockers posted). Diagnosed and fixed test-before-build ordering in both ci.yml (#453) and publish.yml that broke main CI since #448. Released 0.6.8 (Grok/Kimi/Codex native dispatch/Pi skills migration), closed #451. Implemented #441 via task 07-22-subagent-context-limits: tiered context injection caps (32/64/128KiB, config.yaml context_injection, 0=unlimited) with UTF-8-safe truncation and degrade-to-index, mirrored in Python hook + Pi extension per frozen contract; jsonl hygiene warnings in task.py validate; spec updated in platform-integration.md; #349 tracking updated to 20 platforms.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ea399def` | (see git log) |
+| `26ca25f8` | (see git log) |
+| `dc68f5a9` | (see git log) |
+| `65a83d7d` | (see git log) |
+| `bfa7f99d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 171: no-trellis skip keyword (#427) + stale task cleanup
+
+**Date**: 2026-07-22
+**Task**: no-trellis skip keyword (#427) + stale task cleanup
+**Package**: cli
+**Branch**: `main`
+
+### Summary
+
+Implemented prompt_injection.skip_keyword (default no-trellis): word-boundary case-insensitive keyword in user prompt mutes per-turn workflow-state injection for that turn; Python shared hook + OpenCode plugin + dogfood .claude/.codex copies; Pi documented coverage gap (no input handler / systemPrompt cache stability); quoted-empty-string YAML parser fix; 20 new tests, 1491 green. Spec contract added to platform-integration.md. Closed #427. Earlier: archived 4 stale tasks (kiro-injection done fbb38c93, #292 closed, #320 closed, #344 discussion closed/superseded by #445).
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `64df8759` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 172: Script QoL batch: journal flags, task tree, meta flag (#394, #402)
+
+**Date**: 2026-07-22
+**Task**: Script QoL batch: journal flags, task tree, meta flag (#394, #402)
+**Package**: cli
+**Branch**: `main`
+
+### Summary
+
+Batch of three script improvements, all probe-tested.
+
+### Main Changes
+
+- add_session.py: repeatable --change/--test/--next-step; empty sections omitted, placeholder text eliminated (#394)
+- task.py list: dangling parent refs render flat instead of vanishing (#402; tree view itself predated from #395)
+- task.py create --meta key=value (validated pre-mkdir) + set-meta subcommand for task.json meta field
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `53a29d41` | (see git log) |
+
+### Testing
+
+- [OK] pnpm test 1500/1500 green, lint/typecheck clean, CI green
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 173: Snow merge + codex model keys + channel trusted dirs (#443/#459/#414)
+
+**Date**: 2026-07-23
+**Task**: Snow merge + codex model keys + channel trusted dirs (#443/#459/#414)
+**Package**: cli
+**Branch**: `main`
+
+### Summary
+
+Cross-day batch closing out platform and channel work.
+
+### Main Changes
+
+- Merged Snow CLI as 21st platform (#443): author fixed all four blockers, we contributed the missing workflow.md platform markers + marketplace mirror sync + contract test updates
+- Codex #459: kept auto default after two decision reversals; user-set model/model_reasoning_effort in trellis-*.toml now survive update (heredoc-safe extraction); reporter field-verified low effort suffices
+- Channel #414: channel.trusted_context_dirs allowlist + narrow auto-trust of .trellis/tasks|workspace symlink targets, consistent across context-loader/agent-loader/OMP template; adversarial review found no bypass
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ee4bffcc` | (see git log) |
+| `3dc7ba07` | (see git log) |
+| `530d2091` | (see git log) |
+
+### Testing
+
+- [OK] Suite grew 1517→1539, all green; lint/typecheck/build clean; main CI green after each merge
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 0.6.9 release + #459 reply pending user approval
+- #415 structural fix (per-session files + derived index) awaiting user decision on index.md leaving git
+
+
+## Session 174: Journal merge=union quick fix (#415 partial) + branch mixup recovery
+
+**Date**: 2026-07-24
+**Task**: Journal merge=union quick fix (#415 partial) + branch mixup recovery
+**Package**: cli
+**Branch**: `main`
+
+### Summary
+
+Shipped the quick-fix tier of #415 after production evidence confirmed the diagnosis.
+
+### Main Changes
+
+- .gitattributes at project root (not nested .trellis/ — verified via real git check-attr that nested placement never matches) ships journal-*.md merge=union
+- index.md intentionally left unmanaged; documented as safe-to-pick-either-side since task state lives in task.json, not index.md
+- add_session.py warns once when run inside a linked git worktree with session_auto_commit enabled
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a5374864` | (see git log) |
+
+### Testing
+
+- [OK] 1554/1554 green, lint/typecheck clean, main CI green
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- Structural #415 fix (per-session files, index.md as derived non-git cache) still queued pending user decision
+- Mid-session: commit accidentally landed on a stray local feat/v0.7-beta checkout (not created by me) instead of main; cherry-picked onto main, dropped an unrelated stray assets/claude.md that got swept in by git add -A, and restored feat/v0.7-beta to its original remote position

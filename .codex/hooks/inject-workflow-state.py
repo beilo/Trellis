@@ -216,16 +216,51 @@ def _read_trellis_config(root: Path) -> dict:
         return {}
 
 
+DEFAULT_PROMPT_INJECTION_SKIP_KEYWORD = "no-trellis"
+
+
+def _resolve_skip_keyword(config: dict) -> str:
+    """Read `prompt_injection.skip_keyword` from parsed .trellis/config.yaml.
+
+    Mirrors `common.config.get_prompt_injection_config()`. Defaults to
+    "no-trellis"; "" disables the escape hatch entirely. A non-string value
+    falls back to the default.
+    """
+    if isinstance(config, dict):
+        section = config.get("prompt_injection")
+        if isinstance(section, dict):
+            raw = section.get("skip_keyword", DEFAULT_PROMPT_INJECTION_SKIP_KEYWORD)
+            if isinstance(raw, str):
+                return raw
+    return DEFAULT_PROMPT_INJECTION_SKIP_KEYWORD
+
+
+def prompt_has_skip_keyword(prompt: str, keyword: str) -> bool:
+    """Case-insensitive, word-boundary match of `keyword` in `prompt`.
+
+    Hyphen counts as a word char so "no-trellisx" / "xno-trellis" /
+    "foo-no-trellis" don't match, but punctuation/whitespace boundaries do.
+    Empty keyword never matches (disables the escape hatch).
+    """
+    if not keyword or not isinstance(prompt, str):
+        return False
+    pattern = r"(?<![\w-])" + re.escape(keyword) + r"(?![\w-])"
+    return re.search(pattern, prompt, re.IGNORECASE) is not None
+
+
 def _codex_mode_banner(config: dict) -> str:
     """Emit a `<codex-mode>` banner for the additionalContext payload.
 
     Reads `codex.dispatch_mode` from .trellis/config.yaml; defaults to
-    `inline` when missing or invalid because Codex sub-agents run with
-    `fork_turns="none"` isolation and can't inherit the parent session's
-    task context. The banner makes the active mode explicit to Codex AI
-    per turn, complementing the workflow-state body which is per-status.
-    Mode tells AI which dispatch protocol to follow; workflow-state tells
-    AI what step it's at.
+    `inline` when missing or invalid. Trellis defaults Codex dispatch to
+    `inline` to avoid relying on inherited parent transcripts — Codex
+    sub-agents may use fresh, full, or bounded conversation history
+    (`fork_turns`), and fresh-history agents still receive their explicit
+    delegated task and inherited session configuration; this is a Trellis
+    policy choice, not a Codex limitation. The banner makes the active
+    mode explicit to Codex AI per turn, complementing the workflow-state
+    body which is per-status. Mode tells AI which dispatch protocol to
+    follow; workflow-state tells AI what step it's at.
     """
     mode = "inline"
     if isinstance(config, dict):
@@ -252,11 +287,13 @@ def resolve_breadcrumb_key(
 ) -> str:
     """Pick the breadcrumb tag key based on Codex dispatch_mode.
 
-    Codex defaults to ``inline`` because sub-agents run with ``fork_turns="none"``
-    isolation and can't inherit the parent session's task context. Users can
-    opt into ``codex.dispatch_mode: sub-agent`` in ``.trellis/config.yaml``
-    to use the parallel ``<status>-inline`` tag → ``<status>`` flip. Invalid
-    or missing values fall back to inline.
+    Codex defaults to ``inline`` as a Trellis policy choice to avoid relying
+    on inherited parent transcripts, not because Codex sub-agents are
+    technically unable to receive context (``fork_turns`` is caller-controlled
+    and fresh-history agents still get their explicit task + session config).
+    Users can opt into ``codex.dispatch_mode: sub-agent`` in
+    ``.trellis/config.yaml`` to use the parallel ``<status>-inline`` tag →
+    ``<status>`` flip. Invalid or missing values fall back to inline.
 
     Non-codex platforms return the plain status unchanged.
     """
@@ -316,9 +353,12 @@ def main() -> int:
     if root is None:
         return 0  # not a Trellis project
 
+    config = _read_trellis_config(root)
+    if prompt_has_skip_keyword(data.get("prompt", ""), _resolve_skip_keyword(config)):
+        return 0  # user opted out of the per-turn breadcrumb for this turn
+
     templates = load_breadcrumbs(root)
     platform = _detect_platform(data)
-    config = _read_trellis_config(root)
     task = get_active_task(root, data)
     if task is None:
         # No active task — still emit a breadcrumb nudging AI toward
