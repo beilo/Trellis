@@ -1,0 +1,32 @@
+packages/cli/test/templates/codex.test.ts
+  s_c0abb416ef3254::t_1f0fa0024cc5e5 150-152,174,235-237
+  s_c0abb416ef3254::t_7a1d702f520311 119,121-122
+packages/cli/src/commands/channel/adapters/codex.ts
+  s_c0abb416ef3254::t_e39d3179172187 25-27,243-245,247,255-256,258-259,391,393-398,428,565-567
+  s_c0abb416ef3254::t_51e8a0fdf5441f 257
+  s_c0abb416ef3254::t_49102490e7a320 568-569
+BEILO_RELEASES.md
+  s_c0abb416ef3254::t_9e494317761089 19
+packages/cli/test/commands/channel-codex-adapter.test.ts
+  s_c0abb416ef3254::t_b5682cd01e942a 232-239,246,269,274,286-292
+  s_c0abb416ef3254::t_51e8a0fdf5441f 316
+  s_c0abb416ef3254::t_c74497844f93a0 148-229,297,300
+.trellis/spec/cli/backend/commands-channel.md
+  s_c0abb416ef3254::t_c422f8e95a4c9a 737-739,777-779
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "62ff8236efb54dd11fadc11dce3cd6b857dd299a",
+  "prompts": {},
+  "sessions": {
+    "s_c0abb416ef3254": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019fad21-6f9e-79d5-a85a-f1211d3bf073",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "leipeng <leipeng950504@gmail.com>"
+    }
+  }
+}
